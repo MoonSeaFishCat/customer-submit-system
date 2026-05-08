@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import ConfirmDialog from "@/components/confirm-dialog";
+import ToastNotice from "@/components/toast-notice";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Select, Textarea } from "@/components/ui";
 
 const FIELD_TYPES = [
@@ -53,7 +55,8 @@ function normalizeField(field = {}) {
     help: field.help || "",
     optionsText: Array.isArray(field.options) ? field.options.join("\n") : "",
     width: field.width || "full",
-    defaultValue: field.defaultValue || ""
+    defaultValue: field.defaultValue || "",
+    adminOnly: Boolean(field.adminOnly)
   };
 }
 
@@ -69,6 +72,7 @@ function toApiField(field) {
   if (field.help?.trim()) result.help = field.help.trim();
   if (field.width) result.width = field.width;
   if (field.defaultValue?.trim()) result.defaultValue = field.defaultValue.trim();
+  if (field.adminOnly) result.adminOnly = true;
 
   if (field.type === "select") {
     result.options = field.optionsText
@@ -126,6 +130,8 @@ export default function TemplateEditor({ templates }) {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [dragFieldIndex, setDragFieldIndex] = useState(null);
+  const [deleteTemplateTarget, setDeleteTemplateTarget] = useState(null);
+  const [deleteFieldTarget, setDeleteFieldTarget] = useState(null);
 
   const activeField = fields[activeFieldIndex] || null;
 
@@ -183,16 +189,26 @@ export default function TemplateEditor({ templates }) {
     setFields((current) => current.map((field, index) => (index === activeFieldIndex ? { ...field, ...patch } : field)));
   }
 
-  function removeField(index) {
+  function requestRemoveField(index) {
     const field = fields[index];
-    setFields((current) => current.filter((_, i) => i !== index));
+    if (!field) return;
+
+    setDeleteFieldTarget({ index, field });
+  }
+
+  function confirmRemoveField() {
+    const target = deleteFieldTarget;
+    if (!target) return;
+
+    setDeleteFieldTarget(null);
+    setFields((current) => current.filter((_, i) => i !== target.index));
     setActiveFieldIndex((current) => {
       if (fields.length <= 1) return -1;
-      if (current === index) return Math.max(0, index - 1);
-      if (current > index) return current - 1;
+      if (current === target.index) return Math.max(0, target.index - 1);
+      if (current > target.index) return current - 1;
       return current;
     });
-    notify(`已删除控件：${field?.label || field?.key || index + 1}`, "info");
+    notify(`已删除控件：${target.field?.label || target.field?.key || target.index + 1}`, "info");
   }
 
   function duplicateField(index) {
@@ -341,19 +357,21 @@ export default function TemplateEditor({ templates }) {
     router.refresh();
   }
 
-  async function deleteTemplateItem(template) {
+  function requestDeleteTemplate(template) {
     if (!template) {
       notify("请先选择要删除的模板", "error");
       return;
     }
 
-    const confirmed = window.confirm(`确定删除模板「${template.name}」吗？删除后公开提交页将无法使用该模板，但历史提交记录仍会保留。`);
-    if (!confirmed) {
-      notify("已取消删除操作", "info");
-      return;
-    }
+    setDeleteTemplateTarget(template);
+  }
+
+  async function confirmDeleteTemplate() {
+    const template = deleteTemplateTarget;
+    if (!template) return;
 
     setMessage("");
+    setDeleteTemplateTarget(null);
 
     const res = await fetch(`/api/templates/${template.id}`, {
       method: "DELETE"
@@ -374,24 +392,20 @@ export default function TemplateEditor({ templates }) {
     router.refresh();
   }
 
-  async function deleteSelectedTemplate() {
-    await deleteTemplateItem(selected);
+  function deleteSelectedTemplate() {
+    requestDeleteTemplate(selected);
   }
 
   return (
     <div className="space-y-4">
-      {message ? (
-        <div
-          className={[
-            "rounded-md border p-3 text-sm",
-            messageType === "success" && "border-emerald-200 bg-emerald-50 text-emerald-700",
-            messageType === "error" && "border-destructive/30 bg-destructive/10 text-destructive",
-            messageType === "info" && "bg-muted text-muted-foreground"
-          ].filter(Boolean).join(" ")}
-        >
-          {message}
-        </div>
-      ) : null}
+      <ToastNotice
+        notice={message ? {
+          type: messageType,
+          title: messageType === "success" ? "操作成功" : messageType === "error" ? "操作失败" : "操作提示",
+          text: message
+        } : null}
+        onClose={() => setMessage("")}
+      />
 
       <div className="grid gap-4 xl:grid-cols-[260px_1fr_320px]">
         <div className="space-y-4">
@@ -443,7 +457,7 @@ export default function TemplateEditor({ templates }) {
                         type="button"
                         size="sm"
                         variant="destructive"
-                        onClick={() => deleteTemplateItem(template)}
+                        onClick={() => requestDeleteTemplate(template)}
                       >
                         删除
                       </Button>
@@ -564,7 +578,7 @@ export default function TemplateEditor({ templates }) {
                           </div>
                           <div className="flex opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                             <Button type="button" variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); duplicateField(index); }}>复制</Button>
-                            <Button type="button" variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); removeField(index); }}>删除</Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); requestRemoveField(index); }}>删除</Button>
                           </div>
                         </div>
                         <FieldPreview field={field} />
@@ -684,7 +698,7 @@ export default function TemplateEditor({ templates }) {
 
                   <div className="flex flex-wrap gap-2 border-t pt-4">
                     <Button type="button" variant="outline" size="sm" onClick={() => duplicateField(activeFieldIndex)}>复制控件</Button>
-                    <Button type="button" variant="destructive" size="sm" onClick={() => removeField(activeFieldIndex)}>删除控件</Button>
+                    <Button type="button" variant="destructive" size="sm" onClick={() => requestRemoveField(activeFieldIndex)}>删除控件</Button>
                   </div>
                 </div>
               ) : (
@@ -696,6 +710,28 @@ export default function TemplateEditor({ templates }) {
           </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteFieldTarget)}
+        title="确认删除控件"
+        description={`确定删除控件「${deleteFieldTarget?.field?.label || deleteFieldTarget?.field?.key || "未命名控件"}」吗？删除后需重新添加或取消编辑恢复。`}
+        confirmText="确认删除"
+        cancelText="取消"
+        destructive
+        onConfirm={confirmRemoveField}
+        onCancel={() => setDeleteFieldTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTemplateTarget)}
+        title="确认删除模板"
+        description={`确定删除模板「${deleteTemplateTarget?.name || ""}」吗？删除后公开提交页将不可再使用该模板。`}
+        confirmText="确认删除"
+        cancelText="取消"
+        destructive
+        onConfirm={confirmDeleteTemplate}
+        onCancel={() => setDeleteTemplateTarget(null)}
+      />
     </div>
   );
 }

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
-import { deleteSubmission, getSubmissionById, getWebhookLogs, initDb, updateSubmission } from "@/lib/db";
+import { deleteSubmission, getSubmissionById, getTemplateBySlug, getWebhookLogs, initDb, updateSubmission } from "@/lib/db";
 import { requireAdmin, verifyApiKey } from "@/lib/auth";
+import { validateSubmissionData } from "@/lib/validators";
 
 async function requireAdminOrApiKey(request) {
   try {
     await requireAdmin();
     return true;
   } catch {
-    return verifyApiKey(request);
+    return await verifyApiKey(request);
   }
 }
 
@@ -52,8 +53,20 @@ export async function PUT(request, { params }) {
         }
       : body.data;
 
+  const template = await getTemplateBySlug(current.template_slug, { includeInactive: true });
+
+  if (!template) {
+    return NextResponse.json({ error: "Template not found" }, { status: 404 });
+  }
+
+  const validation = validateSubmissionData(template, nextData || {}, { includeAdminOnly: true });
+
+  if (!validation.ok) {
+    return NextResponse.json({ error: "Validation failed", fields: validation.errors }, { status: 400 });
+  }
+
   const submission = await updateSubmission(id, {
-    data: nextData,
+    data: validation.data,
     status: body.status
   });
 

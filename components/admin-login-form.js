@@ -28,8 +28,10 @@ export default function AdminLoginForm() {
       return;
     }
 
-    router.push("/admin");
+    router.replace("/admin");
     router.refresh();
+
+    window.location.href = "/admin";
   }
 
   return (

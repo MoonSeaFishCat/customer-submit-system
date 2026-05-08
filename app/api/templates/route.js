@@ -11,7 +11,7 @@ export async function GET(request) {
     try {
       await requireAdmin();
     } catch {
-      if (!verifyApiKey(request)) {
+      if (!(await verifyApiKey(request))) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
     }
@@ -27,7 +27,7 @@ export async function POST(request) {
   try {
     await requireAdmin();
   } catch {
-    if (!verifyApiKey(request)) {
+    if (!(await verifyApiKey(request))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }

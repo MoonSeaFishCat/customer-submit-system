@@ -8,7 +8,7 @@ async function requireAdminOrApiKey(request) {
     await requireAdmin();
     return true;
   } catch {
-    return verifyApiKey(request);
+    return await verifyApiKey(request);
   }
 }
 

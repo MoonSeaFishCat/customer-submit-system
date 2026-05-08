@@ -115,7 +115,7 @@ x-api-key: your-api-secret
 Authorization: Bearer your-api-secret
 ```
 
-`API_SECRET` 未配置时复用 `ADMIN_SECRET`。
+API Key 会在数据库初始化时随机生成并保存在 `app_meta` 表中。登录后台后可在「接口文档」页面查看当前 `x-api-key`。
 
 ## API 示例
 
@@ -214,7 +214,7 @@ Webhook Headers 可配置为 JSON，例如：
 
 ## 生产建议
 
-- 修改 `ADMIN_SECRET` 和 `API_SECRET`
+- 修改 `ADMIN_SECRET`，并妥善保存后台「接口文档」中展示的 API Key
 - 使用 HTTPS
 - MySQL 部署时配置连接池账号权限
 - 将 SQLite 数据目录持久化挂载

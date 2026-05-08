@@ -2,14 +2,13 @@ import { NextResponse } from "next/server";
 import { createSubmission, getSubmissions, getTemplateBySlug, initDb } from "@/lib/db";
 import { requireAdmin, verifyApiKey } from "@/lib/auth";
 import { validateSubmissionData } from "@/lib/validators";
-import { dispatchWebhooks } from "@/lib/webhook";
 
 async function requireAdminOrApiKey(request) {
   try {
     await requireAdmin();
     return true;
   } catch {
-    return verifyApiKey(request);
+    return await verifyApiKey(request);
   }
 }
 
@@ -42,7 +41,7 @@ export async function POST(request) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
 
-  const validation = validateSubmissionData(template, body.data || {});
+  const validation = validateSubmissionData(template, body.data || {}, { includeAdminOnly: true });
 
   if (!validation.ok) {
     return NextResponse.json({ error: "Validation failed", fields: validation.errors }, { status: 400 });
@@ -56,7 +55,5 @@ export async function POST(request) {
     userAgent: request.headers.get("user-agent") || ""
   });
 
-  const webhooks = await dispatchWebhooks({ template, submission });
-
-  return NextResponse.json({ submission, webhooks }, { status: 201 });
+  return NextResponse.json({ submission }, { status: 201 });
 }

@@ -8,7 +8,7 @@ async function requireAdminOrApiKey(request) {
     await requireAdmin();
     return true;
   } catch {
-    return verifyApiKey(request);
+    return await verifyApiKey(request);
   }
 }
 
@@ -38,7 +38,8 @@ export async function POST(request) {
     key,
     label,
     type: "textarea",
-    width: "half"
+    width: "half",
+    adminOnly: true
   });
 
   if (!result) {
@@ -46,7 +47,7 @@ export async function POST(request) {
   }
 
   return NextResponse.json({
-    field: { key, label, type: "textarea", width: "half" },
+    field: { key, label, type: "textarea", width: "half", adminOnly: true },
     template: result.template,
     submissions: result.submissions
   });
