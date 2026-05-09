@@ -122,6 +122,7 @@ export default function TemplateEditor({ templates }) {
     description: "",
     webhook_urls: "",
     webhook_headers: "{}",
+    push_mode: "manual",
     active: true
   });
   const [fields, setFields] = useState([
@@ -156,6 +157,7 @@ export default function TemplateEditor({ templates }) {
       description: template.description || "",
       webhook_urls: (template.webhook_urls || []).join("\n"),
       webhook_headers: JSON.stringify(template.webhook_headers || {}, null, 2),
+      push_mode: template.push_mode === "auto" ? "auto" : "manual",
       active: Boolean(template.active)
     });
     const normalizedFields = (template.fields || []).map(normalizeField);
@@ -172,6 +174,7 @@ export default function TemplateEditor({ templates }) {
       description: "",
       webhook_urls: "",
       webhook_headers: "{}",
+      push_mode: "manual",
       active: true
     });
     const initial = [createField("text", 1)];
@@ -317,6 +320,7 @@ export default function TemplateEditor({ templates }) {
       fields: apiFields,
       webhook_urls: form.webhook_urls.split("\n").map((item) => item.trim()).filter(Boolean),
       webhook_headers: webhookHeaders,
+      push_mode: form.push_mode,
       active: form.active
     };
 
@@ -437,7 +441,9 @@ export default function TemplateEditor({ templates }) {
                         </Badge>
                       </div>
                       <div className="text-muted-foreground">/{template.slug}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{template.fields?.length || 0} 个字段</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {template.fields?.length || 0} 个字段 · {template.push_mode === "auto" ? "直接推送" : "手动推送"}
+                      </div>
                     </button>
                     <div className="mt-3 flex gap-2">
                       <Button
@@ -597,10 +603,21 @@ export default function TemplateEditor({ templates }) {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Webhook 配置</CardTitle>
-              <CardDescription>提交成功后向外部系统推送。</CardDescription>
+              <CardDescription>配置提交后是否自动推送；选择手动推送时，提交会先进入待推送状态，可在提交结果中手动/再次推送。</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
+                <Label>推送方式</Label>
+                <Select value={form.push_mode} onChange={(event) => setForm({ ...form, push_mode: event.target.value })}>
+                  <option value="manual">手动推送：提交后在后台点击推送</option>
+                  <option value="auto">直接推送：提交成功后自动发送 Webhook</option>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  未配置 Webhook URL 时不会标记为已推送，后续配置地址后仍可手动推送。
+                </p>
+              </div>
+
+              <div className="mt-4 space-y-2">
                 <Label>Webhook URL，每行一个</Label>
                 <Textarea value={form.webhook_urls} onChange={(event) => setForm({ ...form, webhook_urls: event.target.value })} placeholder={"https://example.com/webhook\nhttps://example.com/notify"} />
               </div>

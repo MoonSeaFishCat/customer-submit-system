@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSubmission, getSubmissionById, getTemplateBySlug, initDb, updateSubmission } from "@/lib/db";
+import { pushSubmission } from "@/lib/submission-push";
 import { validateSubmissionData } from "@/lib/validators";
 
 export async function GET(request, { params }) {
@@ -31,7 +32,7 @@ export async function POST(request, { params }) {
     return NextResponse.json({ error: "Validation failed", fields: validation.errors }, { status: 400 });
   }
 
-  const submission = await createSubmission({
+  let submission = await createSubmission({
     template,
     data: validation.data,
     source: body.source || "web",
@@ -39,7 +40,13 @@ export async function POST(request, { params }) {
     userAgent: request.headers.get("user-agent") || ""
   });
 
-  return NextResponse.json({ submission }, { status: 201 });
+  let pushResult = null;
+  if (template.push_mode === "auto") {
+    pushResult = await pushSubmission(submission.id);
+    submission = pushResult.submission || submission;
+  }
+
+  return NextResponse.json({ submission, pushResult }, { status: 201 });
 }
 
 export async function PUT(request, { params }) {

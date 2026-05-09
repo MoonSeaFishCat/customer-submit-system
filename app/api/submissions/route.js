@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSubmission, getSubmissions, getTemplateBySlug, initDb } from "@/lib/db";
 import { requireAdmin, verifyApiKey } from "@/lib/auth";
+import { pushSubmission } from "@/lib/submission-push";
 import { validateSubmissionData } from "@/lib/validators";
 
 async function requireAdminOrApiKey(request) {
@@ -47,7 +48,7 @@ export async function POST(request) {
     return NextResponse.json({ error: "Validation failed", fields: validation.errors }, { status: 400 });
   }
 
-  const submission = await createSubmission({
+  let submission = await createSubmission({
     template,
     data: validation.data,
     source: body.source || "api",
@@ -55,5 +56,11 @@ export async function POST(request) {
     userAgent: request.headers.get("user-agent") || ""
   });
 
-  return NextResponse.json({ submission }, { status: 201 });
+  let pushResult = null;
+  if (template.push_mode === "auto") {
+    pushResult = await pushSubmission(submission.id);
+    submission = pushResult.submission || submission;
+  }
+
+  return NextResponse.json({ submission, pushResult }, { status: 201 });
 }
