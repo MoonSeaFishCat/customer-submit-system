@@ -28,7 +28,8 @@ const emptyField = {
   help: "",
   optionsText: "",
   width: "full",
-  defaultValue: ""
+  defaultValue: "",
+  duplicateCheck: false
 };
 
 function createField(type = "text", index = 1) {
@@ -56,6 +57,7 @@ function normalizeField(field = {}) {
     optionsText: Array.isArray(field.options) ? field.options.join("\n") : "",
     width: field.width || "full",
     defaultValue: field.defaultValue || "",
+    duplicateCheck: Boolean(field.duplicateCheck),
     adminOnly: Boolean(field.adminOnly)
   };
 }
@@ -72,6 +74,7 @@ function toApiField(field) {
   if (field.help?.trim()) result.help = field.help.trim();
   if (field.width) result.width = field.width;
   if (field.defaultValue?.trim()) result.defaultValue = field.defaultValue.trim();
+  if (field.duplicateCheck) result.duplicateCheck = true;
   if (field.adminOnly) result.adminOnly = true;
 
   if (field.type === "select") {
@@ -695,6 +698,12 @@ export default function TemplateEditor({ templates }) {
                     <input type="checkbox" checked={activeField.required} onChange={(event) => updateActiveField({ required: event.target.checked })} />
                     必填字段
                   </label>
+
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={Boolean(activeField.duplicateCheck)} onChange={(event) => updateActiveField({ duplicateCheck: event.target.checked })} />
+                    开启查重提醒
+                  </label>
+                  <p className="-mt-2 text-xs text-muted-foreground">仅勾选的字段会在提交结果中做重复值高亮，不再对所有字段全局查重。</p>
 
                   <div className="flex flex-wrap gap-2 border-t pt-4">
                     <Button type="button" variant="outline" size="sm" onClick={() => duplicateField(activeFieldIndex)}>复制控件</Button>

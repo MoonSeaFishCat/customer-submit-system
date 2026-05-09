@@ -73,6 +73,7 @@ function createEmptyRow(fields) {
 
 export default function SubmitForm({ template, submissions = [] }) {
   const fields = useMemo(() => (template.fields || []).filter((field) => !field.adminOnly), [template.fields]);
+  const duplicateCheckFields = useMemo(() => fields.filter((field) => field.duplicateCheck), [fields]);
   const [submittedRows, setSubmittedRows] = useState(submissions);
   const [rows, setRows] = useState([]);
   const [editingRows, setEditingRows] = useState({});
@@ -104,7 +105,7 @@ export default function SubmitForm({ template, submissions = [] }) {
     const valueMap = new Map();
 
     for (const submission of submittedRows) {
-      for (const field of fields) {
+      for (const field of duplicateCheckFields) {
         const value = normalizeComparableValue(field, submission.data || {});
         if (!value) continue;
 
@@ -124,9 +125,11 @@ export default function SubmitForm({ template, submissions = [] }) {
     }
 
     return duplicated;
-  }, [fields, submittedRows]);
+  }, [duplicateCheckFields, submittedRows]);
 
   function hasDuplicateCell(submission, field, data = submission.data) {
+    if (!field.duplicateCheck) return false;
+
     const value = normalizeComparableValue(field, data || {});
     if (!value) return false;
 
@@ -135,11 +138,11 @@ export default function SubmitForm({ template, submissions = [] }) {
   }
 
   function hasAnyDuplicateCell(submission) {
-    return fields.some((field) => hasDuplicateCell(submission, field));
+    return duplicateCheckFields.some((field) => hasDuplicateCell(submission, field));
   }
 
   function findDuplicateCellInfo(data, excludeId = null) {
-    for (const field of fields) {
+    for (const field of duplicateCheckFields) {
       const value = normalizeComparableValue(field, data || {});
       if (!value) continue;
 
@@ -160,11 +163,13 @@ export default function SubmitForm({ template, submissions = [] }) {
   }
 
   function findDuplicateSubmission(data, excludeId = null) {
-    const signature = createDuplicateSignature(fields, data || {});
+    if (duplicateCheckFields.length === 0) return null;
+
+    const signature = createDuplicateSignature(duplicateCheckFields, data || {});
 
     return submittedRows.find((submission) => {
       if (submission.id === excludeId) return false;
-      return createDuplicateSignature(fields, submission.data || {}) === signature;
+      return createDuplicateSignature(duplicateCheckFields, submission.data || {}) === signature;
     });
   }
 
@@ -400,7 +405,7 @@ export default function SubmitForm({ template, submissions = [] }) {
         <div>
           <div className="font-semibold text-slate-950">填写说明</div>
           <div className="mt-1 text-sm text-slate-600">
-            上方为已提交记录；点击新增填写会在下方生成浅蓝色填写行，带 <span className="font-semibold text-red-500">*</span> 的列为必填。疑似重复内容会使用黄色高亮提醒。
+            上方为已提交记录；点击新增填写会在下方生成浅蓝色填写行，带 <span className="font-semibold text-red-500">*</span> 的列为必填。仅模板配置中开启查重提醒的字段会使用黄色高亮提醒。
           </div>
         </div>
         <Button type="button" className="h-11 rounded-xl px-5 shadow-lg shadow-blue-600/20" onClick={addRow}>
@@ -430,6 +435,7 @@ export default function SubmitForm({ template, submissions = [] }) {
                   {fields.map((field) => {
                     const duplicateCell =
                       duplicate &&
+                      duplicate.field.key === field.key &&
                       normalizeComparableValue(field, row.data) &&
                       normalizeComparableValue(field, row.data) === normalizeComparableValue(field, duplicate.submission.data || {});
 

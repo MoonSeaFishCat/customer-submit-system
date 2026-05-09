@@ -216,6 +216,10 @@ export default function AdminSubmissionList({ submissions, templates }) {
     return currentTemplateFieldKeys;
   }, [currentTemplateFieldKeys, visibleFieldKeys]);
 
+  const duplicateCheckKeys = useMemo(() => {
+    return new Set((currentTemplate?.fields || []).filter((field) => field.duplicateCheck).map((field) => field.key).filter(Boolean));
+  }, [currentTemplate]);
+
   useEffect(() => {
     setVisibleFieldKeys([]);
   }, [templateSlug]);
@@ -268,6 +272,8 @@ export default function AdminSubmissionList({ submissions, templates }) {
       const data = getEditableRowData(submission);
 
       for (const key of tableFieldKeys) {
+        if (!duplicateCheckKeys.has(key)) continue;
+
         const value = normalizeDuplicateValue(data?.[key]);
         if (!value) continue;
 
@@ -287,9 +293,11 @@ export default function AdminSubmissionList({ submissions, templates }) {
     }
 
     return duplicated;
-  }, [draftRows, filtered, tableFieldKeys]);
+  }, [draftRows, duplicateCheckKeys, filtered, tableFieldKeys]);
 
   function hasDuplicateExistingCell(submission, key) {
+    if (!duplicateCheckKeys.has(key)) return false;
+
     const value = normalizeDuplicateValue(getEditableRowData(submission)?.[key]);
     if (!value) return false;
 
@@ -297,6 +305,8 @@ export default function AdminSubmissionList({ submissions, templates }) {
   }
 
   function findDuplicateForValue(key, value, excludeId = null) {
+    if (!duplicateCheckKeys.has(key)) return null;
+
     const normalized = normalizeDuplicateValue(value);
     if (!normalized) return null;
 
@@ -312,6 +322,8 @@ export default function AdminSubmissionList({ submissions, templates }) {
 
   function findFirstDuplicateInData(data, excludeId = null) {
     for (const key of tableFieldKeys) {
+      if (!duplicateCheckKeys.has(key)) continue;
+
       const duplicate = findDuplicateForValue(key, data?.[key], excludeId);
       if (duplicate) {
         return {
@@ -707,12 +719,13 @@ export default function AdminSubmissionList({ submissions, templates }) {
   }
 
   function canPushSubmission(submission) {
-    return getEffectivePushStatus(submission) !== "success" && !pushingIds.includes(submission.id);
+    return !pushingIds.includes(submission.id) && getEffectivePushStatus(submission) !== "pushing";
   }
 
   function getPushButtonText(submission) {
     const pushStatus = getEffectivePushStatus(submission);
     if (pushStatus === "pushing") return "推送中";
+    if (pushStatus === "success") return "再次推送";
     if (pushStatus === "failed" || pushStatus === "not_configured") return "重新推送";
     return "推送";
   }
@@ -725,20 +738,20 @@ export default function AdminSubmissionList({ submissions, templates }) {
           .filter(Boolean)
           .filter((id) => {
             const submission = rowMap.get(id);
-            return submission && getEffectivePushStatus(submission) !== "success";
+            return submission && !pushingIds.includes(submission.id);
           })
       )
     );
 
     if (targetIds.length === 0) {
-      notify("请选择待推送、未配置或推送失败的记录，已推送记录不会重复推送", "warning");
+      notify("请选择需要推送的记录，正在推送中的记录不能重复提交", "warning");
       return;
     }
 
     setConfirmAction({
       type: "push",
       title: targetIds.length > 1 ? "确认批量推送" : "确认推送",
-      description: `确定推送 ${targetIds.length} 条记录吗？未配置 Webhook 地址时不会标记为已推送，配置后可重新推送。`,
+      description: `确定推送 ${targetIds.length} 条记录吗？已推送成功的记录也会再次发送 Webhook。未配置 Webhook 地址时不会标记为已推送，配置后可重新推送。`,
       confirmText: targetIds.length > 1 ? "确认批量推送" : "确认推送",
       destructive: false,
       onConfirm: () => pushSubmissions(targetIds)
@@ -753,14 +766,14 @@ export default function AdminSubmissionList({ submissions, templates }) {
           .filter(Boolean)
           .filter((id) => {
             const submission = rowMap.get(id);
-            return submission && getEffectivePushStatus(submission) !== "success";
+            return submission && !pushingIds.includes(submission.id);
           })
       )
     );
 
     if (targetIds.length === 0) {
       setConfirmAction(null);
-      notify("请选择待推送、未配置或推送失败的记录，已推送记录不会重复推送", "warning");
+      notify("请选择需要推送的记录，正在推送中的记录不能重复提交", "warning");
       return;
     }
 
@@ -1103,7 +1116,7 @@ export default function AdminSubmissionList({ submissions, templates }) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle>提交结果表格</CardTitle>
-              <CardDescription>云表格模式：默认显示当前模板全部提交信息，可直接在单元格内修改；新增行填写后点击最右侧保存。重复字段值会以黄色高亮提醒。</CardDescription>
+              <CardDescription>云表格模式：默认显示当前模板全部提交信息，可直接在单元格内修改；新增行填写后点击最右侧保存。仅模板配置中开启查重提醒的字段会进行重复值高亮。</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button type="button" onClick={addBlankRow} disabled={!templateSlug || tableFieldKeys.length === 0}>
@@ -1272,7 +1285,7 @@ export default function AdminSubmissionList({ submissions, templates }) {
                             保存
                           </Button>
                           <Button type="button" size="sm" variant="outline" onClick={() => requestPushSubmissions([submission.id])} disabled={!canPushSubmission(submission)}>
-                            {getEffectivePushStatus(submission) === "success" ? "已推送" : getPushButtonText(submission)}
+                            {getPushButtonText(submission)}
                           </Button>
                           <Button type="button" size="sm" variant="outline" onClick={() => loadDetail(submission)}>
                             详情
