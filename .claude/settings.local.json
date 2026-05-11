@@ -5,7 +5,9 @@
       "Read(//app/admin/api-docs/**)",
       "Read(//components/**)",
       "Read(//lib/**)",
-      "Read(//home/user/app/components/**)"
+      "Read(//home/user/app/components/**)",
+      "Bash(npx next *)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000)"
     ]
   }
 }

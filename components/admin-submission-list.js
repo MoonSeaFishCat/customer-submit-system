@@ -285,6 +285,21 @@ export default function AdminSubmissionList({ submissions, templates }) {
       }
     }
 
+    for (const row of newRows) {
+      for (const key of tableFieldKeys) {
+        if (!duplicateCheckKeys.has(key)) continue;
+
+        const value = normalizeDuplicateValue(row.data?.[key]);
+        if (!value) continue;
+
+        const mapKey = `${key}:${value}`;
+        if (!valueMap.has(mapKey)) {
+          valueMap.set(mapKey, []);
+        }
+        valueMap.get(mapKey).push(row.id);
+      }
+    }
+
     const duplicated = new Map();
     for (const [key, ids] of valueMap.entries()) {
       if (ids.length > 1) {
@@ -293,7 +308,7 @@ export default function AdminSubmissionList({ submissions, templates }) {
     }
 
     return duplicated;
-  }, [draftRows, duplicateCheckKeys, filtered, tableFieldKeys]);
+  }, [draftRows, duplicateCheckKeys, filtered, newRows, tableFieldKeys]);
 
   function hasDuplicateExistingCell(submission, key) {
     if (!duplicateCheckKeys.has(key)) return false;
@@ -310,10 +325,16 @@ export default function AdminSubmissionList({ submissions, templates }) {
     const normalized = normalizeDuplicateValue(value);
     if (!normalized) return null;
 
-    return filtered.find((submission) => {
+    const inFiltered = filtered.find((submission) => {
       if (submission.id === excludeId) return false;
       return normalizeDuplicateValue(getEditableRowData(submission)?.[key]) === normalized;
     });
+    if (inFiltered) return inFiltered;
+
+    return newRows.find((r) => {
+      if (r.id === excludeId) return false;
+      return normalizeDuplicateValue(r.data?.[key]) === normalized;
+    }) || null;
   }
 
   function hasAnyDuplicateExistingCell(submission) {
@@ -1192,7 +1213,7 @@ export default function AdminSubmissionList({ submissions, templates }) {
               </thead>
               <tbody>
                 {newRows.map((row) => {
-                  const duplicate = findFirstDuplicateInData(row.data);
+                  const duplicate = findFirstDuplicateInData(row.data, row.id);
 
                   return (
                     <tr key={row.id} className={`transition-colors ${duplicate ? "bg-amber-50 hover:bg-amber-100/70" : "bg-blue-50/70 hover:bg-blue-50"}`}>
@@ -1200,7 +1221,8 @@ export default function AdminSubmissionList({ submissions, templates }) {
                         <input type="checkbox" disabled aria-label="新增行保存后才可推送" />
                       </td>
                       {tableFieldKeys.map((key) => {
-                        const duplicateSubmission = findDuplicateForValue(key, row.data?.[key]);
+                        const duplicateSubmission = findDuplicateForValue(key, row.data?.[key], row.id);
+                        const fieldDef = getFieldDefinition(key);
 
                         return (
                           <td key={key} className={`max-w-[240px] border-b border-r px-3 py-2 align-middle ${duplicateSubmission ? "border-amber-200 bg-amber-50" : ""}`}>
@@ -1211,6 +1233,7 @@ export default function AdminSubmissionList({ submissions, templates }) {
                               duplicate: Boolean(duplicateSubmission),
                               onUpdate: updateNewCell
                             })}
+                            {fieldDef.help ? <p className="mt-1 text-xs text-muted-foreground">{fieldDef.help}</p> : null}
                             {duplicateSubmission ? <p className="mt-1 text-xs font-medium text-amber-700">与记录 {duplicateSubmission.id} 重复</p> : null}
                           </td>
                         );
@@ -1257,6 +1280,7 @@ export default function AdminSubmissionList({ submissions, templates }) {
                       </td>
                       {tableFieldKeys.map((key) => {
                         const duplicateCell = hasDuplicateExistingCell(submission, key);
+                        const fieldDef = getFieldDefinition(key);
 
                         return (
                           <td key={key} className={`max-w-[240px] border-b border-r px-3 py-2 align-middle ${duplicateCell ? "border-amber-200 bg-amber-50" : ""}`}>
@@ -1267,6 +1291,7 @@ export default function AdminSubmissionList({ submissions, templates }) {
                               duplicate: duplicateCell,
                               onUpdate: updateExistingCell
                             })}
+                            {fieldDef.help ? <p className="mt-1 text-xs text-muted-foreground">{fieldDef.help}</p> : null}
                             {duplicateCell ? <p className="mt-1 text-xs font-medium text-amber-700">重复值</p> : null}
                           </td>
                         );
