@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//app/admin/submissions/**)",
+      "Read(//app/admin/api-docs/**)",
+      "Read(//components/**)",
+      "Read(//lib/**)",
+      "Read(//home/user/app/components/**)"
+    ]
+  }
+}

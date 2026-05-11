@@ -1403,16 +1403,16 @@ export default function AdminSubmissionList({ submissions, templates }) {
                   <CardContent>
                     <div className="space-y-2">
                       {(selected.webhookLogs || []).map((log) => (
-                        <div key={log.id} className="rounded-md border p-3 text-sm">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="truncate">{log.url}</span>
-                            <Badge variant={log.ok ? "secondary" : "outline"}>{log.ok ? "成功" : "失败"}</Badge>
+                        <div key={log.id} className="rounded-md border p-3 text-sm overflow-hidden">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="break-all text-xs font-mono leading-5 min-w-0">{log.url}</span>
+                            <Badge className="shrink-0" variant={log.ok ? "secondary" : "outline"}>{log.ok ? "成功" : "失败"}</Badge>
                           </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
+                          <div className="mt-1.5 text-xs text-muted-foreground">
                             HTTP {log.status_code} · {formatDate(log.created_at)}
                           </div>
                           {log.last_response ? (
-                            <pre className="mt-2 max-h-32 overflow-auto rounded bg-muted p-2 text-xs">
+                            <pre className="mt-2 max-h-40 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap break-all">
                               {JSON.stringify(log.last_response, null, 2)}
                             </pre>
                           ) : null}
