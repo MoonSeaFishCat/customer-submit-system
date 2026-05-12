@@ -20,11 +20,23 @@ export async function GET(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const templateSlug = request.nextUrl.searchParams.get("template") || undefined;
-  const limit = request.nextUrl.searchParams.get("limit") || 100;
-  const submissions = await getSubmissions({ templateSlug, limit });
+  const sp = request.nextUrl.searchParams;
+  const templateSlug = sp.get("template") || undefined;
+  const limit = sp.get("limit") || 100;
+  const search = sp.get("search") || undefined;
+  const startDate = sp.get("startDate") || undefined;
+  const endDate = sp.get("endDate") || undefined;
+  const status = sp.get("status") || undefined;
+  const source = sp.get("source") || undefined;
+  const pageSize = sp.get("pageSize") ? Number(sp.get("pageSize")) : undefined;
+  const page = sp.get("page") ? Number(sp.get("page")) : 1;
 
-  return NextResponse.json({ submissions });
+  const result = await getSubmissions({ templateSlug, limit, page, pageSize, search, startDate, endDate, status, source });
+
+  if (pageSize) {
+    return NextResponse.json(result);
+  }
+  return NextResponse.json({ submissions: result });
 }
 
 export async function POST(request) {

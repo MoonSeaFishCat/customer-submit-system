@@ -9,31 +9,24 @@ function formatDate(value) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-
-  const pad = (number) => String(number).padStart(2, "0");
+  const pad = (n) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function getAllDataKeys(submissions) {
   const keys = new Set();
-  submissions.forEach((submission) => {
-    Object.keys(submission.data || {}).forEach((key) => keys.add(key));
-  });
+  submissions.forEach((s) => Object.keys(s.data || {}).forEach((k) => keys.add(k)));
   return Array.from(keys);
 }
 
 function buildFieldLabelMap(templates) {
-  const labelMap = new Map();
-
-  templates.forEach((template) => {
-    (template.fields || []).forEach((field) => {
-      if (field.key && field.label && !labelMap.has(field.key)) {
-        labelMap.set(field.key, field.label);
-      }
-    });
-  });
-
-  return labelMap;
+  const map = new Map();
+  templates.forEach((t) =>
+    (t.fields || []).forEach((f) => {
+      if (f.key && f.label && !map.has(f.key)) map.set(f.key, f.label);
+    })
+  );
+  return map;
 }
 
 function normalizeDuplicateValue(value) {
@@ -42,8 +35,13 @@ function normalizeDuplicateValue(value) {
   return String(value).trim().toLowerCase();
 }
 
-export default function AdminSubmissionList({ submissions, templates }) {
-  const [rows, setRows] = useState(submissions);
+const PAGE_SIZE = 50;
+
+export default function AdminSubmissionList({ submissions: initialSubmissions, templates }) {
+  const [rows, setRows] = useState(initialSubmissions);
+  const [total, setTotal] = useState(initialSubmissions.length);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
   const [templateItems, setTemplateItems] = useState(templates);
   const [templateSlug, setTemplateSlug] = useState(templates[0]?.slug || "");
   const [status, setStatus] = useState("");
@@ -51,8 +49,6 @@ export default function AdminSubmissionList({ submissions, templates }) {
   const [keyword, setKeyword] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [fieldKey, setFieldKey] = useState("");
-  const [fieldValue, setFieldValue] = useState("");
   const [visibleFieldKeys, setVisibleFieldKeys] = useState([]);
   const [newColumnName, setNewColumnName] = useState("");
   const [selected, setSelected] = useState(null);
@@ -70,39 +66,47 @@ export default function AdminSubmissionList({ submissions, templates }) {
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
   const dragStateRef = useRef(null);
 
-  useEffect(() => {
-    setRows(submissions);
-  }, [submissions]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  useEffect(() => {
-    setTemplateItems(templates);
-  }, [templates]);
+  async function fetchPage(p, overrides = {}) {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      const slug = overrides.templateSlug !== undefined ? overrides.templateSlug : templateSlug;
+      const q = overrides.keyword !== undefined ? overrides.keyword : keyword;
+      const st = overrides.status !== undefined ? overrides.status : status;
+      const src = overrides.source !== undefined ? overrides.source : source;
+      const df = overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom;
+      const dt = overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
+      if (slug) params.set("template", slug);
+      if (q) params.set("search", q);
+      if (st) params.set("status", st);
+      if (src) params.set("source", src);
+      if (df) params.set("startDate", df);
+      if (dt) params.set("endDate", dt);
+      params.set("page", String(p));
+      params.set("pageSize", String(PAGE_SIZE));
+      const res = await fetch("/api/submissions?" + params.toString());
+      const data = await res.json();
+      setRows(data.submissions || []);
+      setTotal(data.total || 0);
+      setPage(p);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { setTemplateItems(templates); }, [templates]);
 
   useEffect(() => {
     if (!selected) return;
-
-    function onKeyDown(event) {
-      if (event.key === "Escape") {
-        setSelected(null);
-      }
-    }
-
+    function onKeyDown(e) { if (e.key === "Escape") setSelected(null); }
     document.addEventListener("keydown", onKeyDown);
     document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = "";
-    };
+    return () => { document.removeEventListener("keydown", onKeyDown); document.body.style.overflow = ""; };
   }, [selected]);
 
-  const statuses = useMemo(() => {
-    return Array.from(new Set(rows.map((submission) => submission.status).filter(Boolean)));
-  }, [rows]);
-
-  const sources = useMemo(() => {
-    return Array.from(new Set(rows.map((submission) => submission.source).filter(Boolean)));
-  }, [rows]);
+  useEffect(() => { setVisibleFieldKeys([]); }, [templateSlug]);
 
   const fieldLabelMap = useMemo(() => buildFieldLabelMap(templateItems), [templateItems]);
 
@@ -114,18 +118,10 @@ export default function AdminSubmissionList({ submissions, templates }) {
     });
   }
 
-  function getFieldLabel(key) {
-    return fieldLabelMap.get(key) || key;
-  }
+  function getFieldLabel(key) { return fieldLabelMap.get(key) || key; }
 
   function getFieldDefinition(key) {
-    return (currentTemplate?.fields || []).find((field) => field.key === key) || { key, label: getFieldLabel(key), type: "text" };
-  }
-
-  function getAdminCellValue(data, key) {
-    const value = data?.[key];
-    if (value === undefined || value === null) return "";
-    return value;
+    return (currentTemplate?.fields || []).find((f) => f.key === key) || { key, label: getFieldLabel(key), type: "text" };
   }
 
   function renderAdminEditableCell({ rowId, data, key, duplicate = false, onUpdate }) {
@@ -133,208 +129,135 @@ export default function AdminSubmissionList({ submissions, templates }) {
     const normalizedType = field.type === "dropdown" || field.type === "radio" ? "select" : field.type;
     const options = Array.isArray(field.options)
       ? field.options
-      : String(field.optionsText || "")
-          .split("\n")
-          .map((item) => item.trim())
-          .filter(Boolean);
-    const value = getAdminCellValue(data, key);
-    const commonClass = `h-8 min-w-40 px-2 shadow-none hover:border-input hover:bg-background focus-visible:bg-background ${duplicate ? "border-amber-300 bg-amber-100/80 font-semibold text-amber-900 focus-visible:ring-amber-400" : "border-transparent bg-transparent"}`;
+      : String(field.optionsText || "").split("\n").map((o) => o.trim()).filter(Boolean);
+    const value = data?.[key] === undefined || data?.[key] === null ? "" : data[key];
+    const dupClass = duplicate ? "border-amber-300 bg-amber-100/80 font-semibold text-amber-900 focus-visible:ring-amber-400" : "";
 
     if (normalizedType === "select" || options.length > 0) {
       return (
         <select
-          className={`h-8 min-w-40 rounded-md border bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${duplicate ? "border-amber-300 bg-amber-100/80 font-semibold text-amber-900 focus-visible:ring-amber-400" : "border-input"}`}
-          value={value === undefined || value === null ? "" : String(value)}
-          onChange={(event) => onUpdate(rowId, key, event.target.value)}
+          className={`h-8 min-w-40 rounded-md border bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${duplicate ? dupClass : "border-input"}`}
+          value={String(value)}
+          onChange={(e) => onUpdate(rowId, key, e.target.value)}
         >
           <option value="">请选择</option>
-          {options.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
+          {options.map((o) => (
+            <option key={o} value={o}>{o}</option>
           ))}
         </select>
       );
     }
-
     if (normalizedType === "checkbox") {
       return (
-        <label className={`flex h-8 min-w-36 items-center gap-2 rounded-md border px-2 text-sm ${duplicate ? "border-amber-300 bg-amber-100/80 font-semibold text-amber-900" : "border-input bg-background"}`}>
+        <label className={`flex h-8 min-w-36 items-center gap-2 rounded-md border px-2 text-sm ${duplicate ? dupClass : "border-input bg-background"}`}>
           <input
             type="checkbox"
             checked={Boolean(value === true || value === "true" || value === "1" || value === "是")}
-            onChange={(event) => onUpdate(rowId, key, event.target.checked)}
+            onChange={(e) => onUpdate(rowId, key, e.target.checked)}
           />
           {field.placeholder || field.help || "是"}
         </label>
       );
     }
-
     if (normalizedType === "textarea") {
       return (
         <Textarea
-          className={`min-h-8 min-w-52 py-1 text-sm ${duplicate ? "border-amber-300 bg-amber-100/80 font-semibold text-amber-900 focus-visible:ring-amber-400" : "border-transparent bg-transparent shadow-none hover:border-input hover:bg-background focus-visible:bg-background"}`}
-          value={value === undefined || value === null ? "" : String(value)}
-          onChange={(event) => onUpdate(rowId, key, event.target.value)}
+          className={`min-h-8 min-w-52 py-1 text-sm ${duplicate ? dupClass : "border-transparent bg-transparent shadow-none hover:border-input hover:bg-background focus-visible:bg-background"}`}
+          value={String(value)}
+          onChange={(e) => onUpdate(rowId, key, e.target.value)}
           placeholder={field.placeholder || getFieldLabel(key)}
         />
       );
     }
-
     return (
       <Input
-        className={commonClass}
+        className={`h-8 min-w-40 px-2 shadow-none hover:border-input hover:bg-background focus-visible:bg-background ${duplicate ? dupClass : "border-transparent bg-transparent"}`}
         type={normalizedType || "text"}
-        value={value === undefined || value === null ? "" : String(value)}
-        onChange={(event) => onUpdate(rowId, key, event.target.value)}
+        value={String(value)}
+        onChange={(e) => onUpdate(rowId, key, e.target.value)}
         placeholder={field.placeholder || getFieldLabel(key)}
       />
     );
   }
 
   function getSubmissionFieldLabel(submission, key) {
-    const template = templateItems.find((item) => item.slug === submission.template_slug);
-    const field = template?.fields?.find((item) => item.key === key);
-    return field?.label || getFieldLabel(key);
+    const tmpl = templateItems.find((t) => t.slug === submission.template_slug);
+    return tmpl?.fields?.find((f) => f.key === key)?.label || getFieldLabel(key);
   }
 
-  const currentTemplate = useMemo(() => {
-    return templateItems.find((template) => template.slug === templateSlug) || templateItems[0] || null;
-  }, [templateSlug, templateItems]);
+  const currentTemplate = useMemo(
+    () => templateItems.find((t) => t.slug === templateSlug) || templateItems[0] || null,
+    [templateSlug, templateItems]
+  );
 
-  const currentTemplateFieldKeys = useMemo(() => {
-    return (currentTemplate?.fields || []).map((field) => field.key).filter(Boolean);
-  }, [currentTemplate]);
+  const currentTemplateFieldKeys = useMemo(
+    () => (currentTemplate?.fields || []).map((f) => f.key).filter(Boolean),
+    [currentTemplate]
+  );
 
   const allDataKeys = useMemo(() => {
-    const keys = getAllDataKeys(rows.filter((submission) => !templateSlug || submission.template_slug === templateSlug));
+    const keys = getAllDataKeys(rows.filter((s) => !templateSlug || s.template_slug === templateSlug));
     return Array.from(new Set([...currentTemplateFieldKeys, ...keys]));
   }, [currentTemplateFieldKeys, rows, templateSlug]);
 
-  const tableFieldKeys = useMemo(() => {
-    if (visibleFieldKeys.length > 0) return visibleFieldKeys;
-    return currentTemplateFieldKeys;
-  }, [currentTemplateFieldKeys, visibleFieldKeys]);
+  const tableFieldKeys = useMemo(
+    () => (visibleFieldKeys.length > 0 ? visibleFieldKeys : currentTemplateFieldKeys),
+    [currentTemplateFieldKeys, visibleFieldKeys]
+  );
 
-  const duplicateCheckKeys = useMemo(() => {
-    return new Set((currentTemplate?.fields || []).filter((field) => field.duplicateCheck).map((field) => field.key).filter(Boolean));
-  }, [currentTemplate]);
+  const duplicateCheckKeys = useMemo(
+    () => new Set((currentTemplate?.fields || []).filter((f) => f.duplicateCheck).map((f) => f.key).filter(Boolean)),
+    [currentTemplate]
+  );
 
-  useEffect(() => {
-    setVisibleFieldKeys([]);
-  }, [templateSlug]);
-
-  const filtered = useMemo(() => {
-    const normalizedKeyword = keyword.trim().toLowerCase();
-    const normalizedFieldValue = fieldValue.trim().toLowerCase();
-    const fromTime = dateFrom ? new Date(dateFrom).getTime() : null;
-    const toTime = dateTo ? new Date(dateTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
-
-    return rows.filter((submission) => {
-      if (templateSlug && submission.template_slug !== templateSlug) return false;
-      if (status && submission.status !== status) return false;
-      if (source && submission.source !== source) return false;
-
-      const createdAt = new Date(submission.created_at).getTime();
-      if (fromTime && createdAt < fromTime) return false;
-      if (toTime && createdAt > toTime) return false;
-
-      if (fieldKey) {
-        const value = submission.data?.[fieldKey];
-        if (value === undefined || value === null) return false;
-        if (normalizedFieldValue && !String(value).toLowerCase().includes(normalizedFieldValue)) return false;
-      }
-
-      if (normalizedKeyword) {
-        const haystack = [
-          submission.id,
-          submission.template_slug,
-          submission.status,
-          submission.source,
-          submission.ip,
-          submission.user_agent,
-          JSON.stringify(submission.data || {})
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        if (!haystack.includes(normalizedKeyword)) return false;
-      }
-
-      return true;
-    });
-  }, [dateFrom, dateTo, fieldKey, fieldValue, keyword, source, status, rows, templateSlug]);
+  function getEditableRowData(submission) {
+    return { ...(submission.data || {}), ...(draftRows[submission.id] || {}) };
+  }
 
   const duplicateValueMap = useMemo(() => {
     const valueMap = new Map();
-
-    for (const submission of filtered) {
-      const data = getEditableRowData(submission);
-
+    for (const s of rows) {
+      const data = getEditableRowData(s);
       for (const key of tableFieldKeys) {
         if (!duplicateCheckKeys.has(key)) continue;
-
         const value = normalizeDuplicateValue(data?.[key]);
         if (!value) continue;
-
-        const mapKey = `${key}:${value}`;
-        if (!valueMap.has(mapKey)) {
-          valueMap.set(mapKey, []);
-        }
-        valueMap.get(mapKey).push(submission.id);
+        const mk = `${key}:${value}`;
+        if (!valueMap.has(mk)) valueMap.set(mk, []);
+        valueMap.get(mk).push(s.id);
       }
     }
-
     for (const row of newRows) {
       for (const key of tableFieldKeys) {
         if (!duplicateCheckKeys.has(key)) continue;
-
         const value = normalizeDuplicateValue(row.data?.[key]);
         if (!value) continue;
-
-        const mapKey = `${key}:${value}`;
-        if (!valueMap.has(mapKey)) {
-          valueMap.set(mapKey, []);
-        }
-        valueMap.get(mapKey).push(row.id);
+        const mk = `${key}:${value}`;
+        if (!valueMap.has(mk)) valueMap.set(mk, []);
+        valueMap.get(mk).push(row.id);
       }
     }
-
-    const duplicated = new Map();
-    for (const [key, ids] of valueMap.entries()) {
-      if (ids.length > 1) {
-        duplicated.set(key, new Set(ids));
-      }
-    }
-
-    return duplicated;
-  }, [draftRows, duplicateCheckKeys, filtered, newRows, tableFieldKeys]);
+    const dup = new Map();
+    for (const [key, ids] of valueMap.entries()) { if (ids.length > 1) dup.set(key, new Set(ids)); }
+    return dup;
+  }, [draftRows, duplicateCheckKeys, rows, newRows, tableFieldKeys]);
 
   function hasDuplicateExistingCell(submission, key) {
     if (!duplicateCheckKeys.has(key)) return false;
-
     const value = normalizeDuplicateValue(getEditableRowData(submission)?.[key]);
     if (!value) return false;
-
     return Boolean(duplicateValueMap.get(`${key}:${value}`)?.has(submission.id));
   }
 
   function findDuplicateForValue(key, value, excludeId = null) {
     if (!duplicateCheckKeys.has(key)) return null;
-
     const normalized = normalizeDuplicateValue(value);
     if (!normalized) return null;
-
-    const inFiltered = filtered.find((submission) => {
-      if (submission.id === excludeId) return false;
-      return normalizeDuplicateValue(getEditableRowData(submission)?.[key]) === normalized;
-    });
-    if (inFiltered) return inFiltered;
-
-    return newRows.find((r) => {
-      if (r.id === excludeId) return false;
-      return normalizeDuplicateValue(r.data?.[key]) === normalized;
-    }) || null;
+    return (
+      rows.find((s) => s.id !== excludeId && normalizeDuplicateValue(getEditableRowData(s)?.[key]) === normalized) ||
+      newRows.find((r) => r.id !== excludeId && normalizeDuplicateValue(r.data?.[key]) === normalized) ||
+      null
+    );
   }
 
   function hasAnyDuplicateExistingCell(submission) {
@@ -344,28 +267,16 @@ export default function AdminSubmissionList({ submissions, templates }) {
   function findFirstDuplicateInData(data, excludeId = null) {
     for (const key of tableFieldKeys) {
       if (!duplicateCheckKeys.has(key)) continue;
-
-      const duplicate = findDuplicateForValue(key, data?.[key], excludeId);
-      if (duplicate) {
-        return {
-          key,
-          submission: duplicate
-        };
-      }
+      const dup = findDuplicateForValue(key, data?.[key], excludeId);
+      if (dup) return { key, submission: dup };
     }
-
     return null;
   }
 
   async function loadDetail(submission) {
     const res = await fetch(`/api/submissions/${submission.id}`);
     const json = await res.json();
-
-    if (!res.ok) {
-      notify(json.error || "详情加载失败，请稍后重试", "error");
-      return;
-    }
-
+    if (!res.ok) { notify(json.error || "详情加载失败", "error"); return; }
     setSelected(json);
     setPatchMessage("");
     setEditMessage("");
@@ -387,51 +298,37 @@ export default function AdminSubmissionList({ submissions, templates }) {
 
   async function deleteSubmissionItem(submission) {
     setConfirmAction(null);
-
-    const res = await fetch(`/api/submissions/${submission.id}`, {
-      method: "DELETE"
-    });
-
+    const res = await fetch(`/api/submissions/${submission.id}`, { method: "DELETE" });
     const json = await res.json();
-
-    if (!res.ok) {
-      notify(json.error || "删除失败", "error");
-      return;
-    }
-
+    if (!res.ok) { notify(json.error || "删除失败", "error"); return; }
     setRows((current) => current.filter((item) => item.id !== submission.id));
+    setTotal((t) => t - 1);
     notify("提交记录已删除", "success");
-
-    if (selected?.submission?.id === submission.id) {
-      setSelected(null);
-    }
+    if (selected?.submission?.id === submission.id) setSelected(null);
   }
 
   function resetFilters() {
-    setTemplateSlug(templateItems[0]?.slug || "");
+    const slug = templateItems[0]?.slug || "";
+    setTemplateSlug(slug);
     setStatus("");
     setSource("");
     setKeyword("");
     setDateFrom("");
     setDateTo("");
-    setFieldKey("");
-    setFieldValue("");
+    fetchPage(1, { templateSlug: slug, keyword: "", status: "", source: "", dateFrom: "", dateTo: "" });
     notify("筛选条件已重置", "info");
   }
 
   function toggleVisibleField(key) {
     setVisibleFieldKeys((current) =>
-      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+      current.includes(key) ? current.filter((k) => k !== key) : [...current, key]
     );
   }
 
   function escapeHtml(value) {
     return String(value ?? "")
-      .replace(/&/g, "\u0026amp;")
-      .replace(/</g, "\u0026lt;")
-      .replace(/>/g, "\u0026gt;")
-      .replace(/"/g, "\u0026quot;")
-      .replace(/'/g, "\u0026#39;");
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
   function formatExportCellValue(value) {
@@ -441,215 +338,97 @@ export default function AdminSubmissionList({ submissions, templates }) {
     return String(value);
   }
 
-  function buildExportFileName(value) {
-    return String(value || "提交结果")
-      .replace(/[\\/:*?"<>|]/g, "-")
-      .replace(/\s+/g, "-")
-      .slice(0, 80);
-  }
-
-  function buildFilterSummary() {
-    const summary = [];
-
-    if (currentTemplate?.name) summary.push(`模板：${currentTemplate.name}`);
-    if (status) summary.push(`状态：${status}`);
-    if (source) summary.push(`来源：${source}`);
-    if (dateFrom) summary.push(`开始日期：${dateFrom}`);
-    if (dateTo) summary.push(`结束日期：${dateTo}`);
-    if (fieldKey) summary.push(`字段筛选：${getFieldLabel(fieldKey)}${fieldValue ? ` 包含「${fieldValue}」` : ""}`);
-    if (keyword.trim()) summary.push(`关键词：${keyword.trim()}`);
-
-    return summary.length > 0 ? summary.join("；") : "全部记录";
-  }
-
-  function exportFilteredResults() {
+  function buildExcelHtml(allRows, count) {
     const templateName = currentTemplate?.name || "提交结果";
     const exportedAt = formatDate(new Date().toISOString());
-    const timestamp = exportedAt.replace(/[:\s]/g, "-");
     const headers = tableFieldKeys.map((key) => getFieldLabel(key));
     const columnCount = Math.max(headers.length, 1);
-    const filterSummary = buildFilterSummary();
-
     const columnWidths = headers.map(() => '<col style="width: 180px" />').join("");
+    const bodyRows = allRows.length > 0
+      ? allRows.map((s, i) =>
+          `<tr>${tableFieldKeys.map((key) =>
+            `<td class="cell ${i % 2 === 1 ? "cell-alt" : ""}">${escapeHtml(formatExportCellValue(s.data?.[key]))}</td>`
+          ).join("")}</tr>`
+        ).join("")
+      : `<tr><td class="empty" colspan="${columnCount}">暂无数据</td></tr>`;
+    return {
+      templateName,
+      timestamp: exportedAt.replace(/[:\s]/g, "-"),
+      html: `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8" />
+<style>body{margin:0;font-family:"Microsoft YaHei",Arial,sans-serif;color:#0f172a;background:#fff}
+table.excel-table{border-collapse:collapse;table-layout:fixed;width:100%;font-size:12px}
+.title{height:34px;padding:14px 16px;color:#fff;background:#1d4ed8;border:1px solid #1e40af;font-size:20px;font-weight:700;text-align:center;vertical-align:middle}
+.meta{height:24px;padding:8px 12px;color:#475569;background:#eff6ff;border:1px solid #bfdbfe;font-size:12px;text-align:left;vertical-align:middle}
+th{height:30px;padding:8px 10px;color:#fff;background:#2563eb;border:1px solid #93c5fd;font-size:12px;font-weight:700;text-align:center;vertical-align:middle;white-space:nowrap}
+td.cell{min-height:24px;padding:7px 10px;color:#111827;background:#fff;border:1px solid #dbeafe;text-align:left;vertical-align:top;word-break:break-all;white-space:normal}
+td.cell-alt{background:#f8fbff}td.empty{padding:22px 10px;color:#64748b;background:#f8fafc;border:1px solid #dbeafe;text-align:center}
+</style></head><body>
+<table class="excel-table">${columnWidths}
+<tr><td class="title" colspan="${columnCount}">${escapeHtml(templateName)} - 查询结果</td></tr>
+<tr><td class="meta" colspan="${columnCount}">导出时间：${escapeHtml(exportedAt)}　共 ${count} 条记录</td></tr>
+<tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr>
+${bodyRows}
+</table></body></html>`
+    };
+  }
 
-    const bodyRows =
-      filtered.length > 0
-        ? filtered
-            .map(
-              (submission, rowIndex) => `
-                <tr>
-                  ${tableFieldKeys
-                    .map((key) => {
-                      const value = formatExportCellValue(submission.data?.[key]);
-                      return `<td class="cell ${rowIndex % 2 === 1 ? "cell-alt" : ""}">${escapeHtml(value)}</td>`;
-                    })
-                    .join("")}
-                </tr>
-              `
-            )
-            .join("")
-        : `<tr><td class="empty" colspan="${columnCount}">暂无数据</td></tr>`;
-
-    const html = `<!DOCTYPE html>
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-          <meta charset="UTF-8" />
-          <!--[if gte mso 9]>
-          <xml>
-            <x:ExcelWorkbook>
-              <x:ExcelWorksheets>
-                <x:ExcelWorksheet>
-                  <x:Name>${escapeHtml(templateName).slice(0, 31)}</x:Name>
-                  <x:WorksheetOptions>
-                    <x:DisplayGridlines/>
-                    <x:FreezePanes/>
-                    <x:FrozenNoSplit/>
-                    <x:SplitHorizontal>3</x:SplitHorizontal>
-                    <x:TopRowBottomPane>3</x:TopRowBottomPane>
-                    <x:ActivePane>2</x:ActivePane>
-                  </x:WorksheetOptions>
-                </x:ExcelWorksheet>
-              </x:ExcelWorksheets>
-            </x:ExcelWorkbook>
-          </xml>
-          <![endif]-->
-          <style>
-            body {
-              margin: 0;
-              font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
-              color: #0f172a;
-              background: #ffffff;
-            }
-            table.excel-table {
-              border-collapse: collapse;
-              table-layout: fixed;
-              width: 100%;
-              font-size: 12px;
-              mso-border-alt: solid #cbd5e1 .5pt;
-            }
-            .title {
-              height: 34px;
-              padding: 14px 16px;
-              color: #ffffff;
-              background: #1d4ed8;
-              border: 1px solid #1e40af;
-              font-size: 20px;
-              font-weight: 700;
-              text-align: center;
-              vertical-align: middle;
-            }
-            .meta {
-              height: 24px;
-              padding: 8px 12px;
-              color: #475569;
-              background: #eff6ff;
-              border: 1px solid #bfdbfe;
-              font-size: 12px;
-              text-align: left;
-              vertical-align: middle;
-            }
-            th {
-              height: 30px;
-              padding: 8px 10px;
-              color: #ffffff;
-              background: #2563eb;
-              border: 1px solid #93c5fd;
-              font-size: 12px;
-              font-weight: 700;
-              text-align: center;
-              vertical-align: middle;
-              white-space: nowrap;
-            }
-            td.cell {
-              min-height: 24px;
-              padding: 7px 10px;
-              color: #111827;
-              background: #ffffff;
-              border: 1px solid #dbeafe;
-              text-align: left;
-              vertical-align: top;
-              mso-number-format: "\\@";
-              word-break: break-all;
-              white-space: normal;
-            }
-            td.cell-alt {
-              background: #f8fbff;
-            }
-            td.empty {
-              padding: 22px 10px;
-              color: #64748b;
-              background: #f8fafc;
-              border: 1px solid #dbeafe;
-              text-align: center;
-            }
-          </style>
-        </head>
-        <body>
-          <table class="excel-table">
-            ${columnWidths}
-            <tr>
-              <td class="title" colspan="${columnCount}">${escapeHtml(templateName)} - 查询结果</td>
-            </tr>
-            <tr>
-              <td class="meta" colspan="${columnCount}">导出时间：${escapeHtml(exportedAt)}　记录数：${filtered.length}　筛选条件：${escapeHtml(filterSummary)}</td>
-            </tr>
-            <tr>
-              ${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}
-            </tr>
-            ${bodyRows}
-          </table>
-        </body>
-      </html>
-    `;
-
-    const blob = new Blob([`\uFEFF${html}`], { type: "application/vnd.ms-excel;charset=utf-8" });
+  function downloadExcel(html, templateName, timestamp) {
+    const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
-
     link.href = url;
-    link.download = `${buildExportFileName(templateName)}-查询结果-${timestamp}.xls`;
+    link.download = `${String(templateName).replace(/[\\/:*?"<>|]/g, "-").slice(0, 80)}-查询结果-${timestamp}.xls`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     window.URL.revokeObjectURL(url);
-    notify(`已导出 ${filtered.length} 条查询结果`, "success");
+  }
+
+  const [exporting, setExporting] = useState(false);
+
+  async function exportAllResults() {
+    if (tableFieldKeys.length === 0) return;
+    setExporting(true);
+    notify("正在获取全部数据，请稍候...", "info");
+    try {
+      const params = new URLSearchParams();
+      if (templateSlug) params.set("template", templateSlug);
+      if (keyword) params.set("search", keyword);
+      if (status) params.set("status", status);
+      if (source) params.set("source", source);
+      if (dateFrom) params.set("startDate", dateFrom);
+      if (dateTo) params.set("endDate", dateTo);
+      params.set("limit", "999999");
+      const res = await fetch("/api/submissions?" + params.toString());
+      const data = await res.json();
+      const allRows = data.submissions || [];
+      const { html, templateName, timestamp } = buildExcelHtml(allRows, allRows.length);
+      downloadExcel(html, templateName, timestamp);
+      notify(`已导出全部 ${allRows.length} 条结果`, "success");
+    } catch (error) {
+      notify("导出失败：" + error.message, "error");
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function addCustomColumn() {
     const label = newColumnName.trim();
-
-    if (!label) {
-      notify("请输入新增列名称", "warning");
-      return;
-    }
-
-    if (!templateSlug) {
-      notify("请先选择模板", "warning");
-      return;
-    }
-
+    if (!label) { notify("请输入新增列名称", "warning"); return; }
+    if (!templateSlug) { notify("请先选择模板", "warning"); return; }
     const res = await fetch("/api/submissions/fields", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        template_slug: templateSlug,
-        label
-      })
+      body: JSON.stringify({ template_slug: templateSlug, label })
     });
-
     const json = await res.json();
-
-    if (!res.ok) {
-      notify(json.error || "新增列失败", "error");
-      return;
-    }
-
-    setTemplateItems((current) =>
-      current.map((template) => (template.slug === templateSlug ? json.template : template))
-    );
+    if (!res.ok) { notify(json.error || "新增列失败", "error"); return; }
+    setTemplateItems((current) => current.map((t) => (t.slug === templateSlug ? json.template : t)));
     setRows((current) => {
-      const nextRows = new Map((json.submissions || []).map((submission) => [submission.id, submission]));
-      return current.map((submission) => nextRows.get(submission.id) || submission);
+      const nextRows = new Map((json.submissions || []).map((s) => [s.id, s]));
+      return current.map((s) => nextRows.get(s.id) || s);
     });
     setVisibleFieldKeys((current) => Array.from(new Set([...current, ...currentTemplateFieldKeys, json.field.key])));
     setNewColumnName("");
@@ -658,53 +437,32 @@ export default function AdminSubmissionList({ submissions, templates }) {
 
   function startDrag(event) {
     if (event.button !== 0) return;
-
-    dragStateRef.current = {
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: modalPosition.x,
-      originY: modalPosition.y
-    };
-
-    function onMouseMove(moveEvent) {
+    dragStateRef.current = { startX: event.clientX, startY: event.clientY, originX: modalPosition.x, originY: modalPosition.y };
+    function onMouseMove(e) {
       if (!dragStateRef.current) return;
-
-      const nextX = dragStateRef.current.originX + moveEvent.clientX - dragStateRef.current.startX;
-      const nextY = dragStateRef.current.originY + moveEvent.clientY - dragStateRef.current.startY;
-      setModalPosition({ x: nextX, y: nextY });
+      setModalPosition({
+        x: dragStateRef.current.originX + e.clientX - dragStateRef.current.startX,
+        y: dragStateRef.current.originY + e.clientY - dragStateRef.current.startY
+      });
     }
-
     function onMouseUp() {
       dragStateRef.current = null;
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     }
-
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }
 
-  function updateEditField(key, value) {
-    setEditData((current) => ({
-      ...current,
-      [key]: value
-    }));
-  }
-
-  function getEditableRowData(submission) {
-    return {
-      ...(submission.data || {}),
-      ...(draftRows[submission.id] || {})
-    };
-  }
+  function updateEditField(key, value) { setEditData((current) => ({ ...current, [key]: value })); }
 
   function getSubmissionTemplate(submission) {
-    return templateItems.find((template) => template.slug === submission.template_slug);
+    return templateItems.find((t) => t.slug === submission.template_slug);
   }
 
   function hasWebhookConfig(submission) {
-    const template = getSubmissionTemplate(submission);
-    return Array.isArray(template?.webhook_urls) && template.webhook_urls.filter(Boolean).length > 0;
+    const tmpl = getSubmissionTemplate(submission);
+    return Array.isArray(tmpl?.webhook_urls) && tmpl.webhook_urls.filter(Boolean).length > 0;
   }
 
   function getEffectivePushStatus(submission) {
@@ -714,29 +472,25 @@ export default function AdminSubmissionList({ submissions, templates }) {
   }
 
   function getPushStatusText(submission) {
-    const pushStatus = getEffectivePushStatus(submission);
-    if (pushStatus === "pushing") return "推送中";
-    if (pushStatus === "success") return "已推送";
-    if (pushStatus === "failed") return "推送失败";
-    if (pushStatus === "not_configured") return "未配置";
+    const s = getEffectivePushStatus(submission);
+    if (s === "pushing") return "推送中";
+    if (s === "success") return "已推送";
+    if (s === "failed") return "推送失败";
+    if (s === "not_configured") return "未配置";
     return "待推送";
   }
 
   function getPushStatusClass(submission) {
-    const pushStatus = getEffectivePushStatus(submission);
-    if (pushStatus === "pushing") return "border-blue-200 bg-blue-50 text-blue-700";
-    if (pushStatus === "success") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    if (pushStatus === "failed") return "border-red-200 bg-red-50 text-red-700";
-    if (pushStatus === "not_configured") return "border-amber-200 bg-amber-50 text-amber-700";
+    const s = getEffectivePushStatus(submission);
+    if (s === "pushing") return "border-blue-200 bg-blue-50 text-blue-700";
+    if (s === "success") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    if (s === "failed") return "border-red-200 bg-red-50 text-red-700";
+    if (s === "not_configured") return "border-amber-200 bg-amber-50 text-amber-700";
     return "border-slate-200 bg-slate-50 text-slate-600";
   }
 
   function toggleCheckedId(id) {
-    setCheckedIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
-  }
-
-  function toggleAllFiltered(checked) {
-    setCheckedIds(checked ? filtered.map((submission) => submission.id) : []);
+    setCheckedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   }
 
   function canPushSubmission(submission) {
@@ -744,35 +498,23 @@ export default function AdminSubmissionList({ submissions, templates }) {
   }
 
   function getPushButtonText(submission) {
-    const pushStatus = getEffectivePushStatus(submission);
-    if (pushStatus === "pushing") return "推送中";
-    if (pushStatus === "success") return "再次推送";
-    if (pushStatus === "failed" || pushStatus === "not_configured") return "重新推送";
+    const s = getEffectivePushStatus(submission);
+    if (s === "pushing") return "推送中";
+    if (s === "success") return "再次推送";
+    if (s === "failed" || s === "not_configured") return "重新推送";
     return "推送";
   }
 
   function requestPushSubmissions(ids) {
-    const rowMap = new Map(rows.map((submission) => [submission.id, submission]));
-    const targetIds = Array.from(
-      new Set(
-        ids
-          .filter(Boolean)
-          .filter((id) => {
-            const submission = rowMap.get(id);
-            return submission && !pushingIds.includes(submission.id);
-          })
-      )
-    );
-
-    if (targetIds.length === 0) {
-      notify("请选择需要推送的记录，正在推送中的记录不能重复提交", "warning");
-      return;
-    }
-
+    const rowMap = new Map(rows.map((s) => [s.id, s]));
+    const targetIds = Array.from(new Set(
+      ids.filter(Boolean).filter((id) => { const s = rowMap.get(id); return s && !pushingIds.includes(s.id); })
+    ));
+    if (targetIds.length === 0) { notify("请选择需要推送的记录，正在推送中的记录不能重复提交", "warning"); return; }
     setConfirmAction({
       type: "push",
       title: targetIds.length > 1 ? "确认批量推送" : "确认推送",
-      description: `确定推送 ${targetIds.length} 条记录吗？已推送成功的记录也会再次发送 Webhook。未配置 Webhook 地址时不会标记为已推送，配置后可重新推送。`,
+      description: `确定推送 ${targetIds.length} 条记录吗？已推送成功的记录也会再次发送 Webhook。`,
       confirmText: targetIds.length > 1 ? "确认批量推送" : "确认推送",
       destructive: false,
       onConfirm: () => pushSubmissions(targetIds)
@@ -780,82 +522,32 @@ export default function AdminSubmissionList({ submissions, templates }) {
   }
 
   async function pushSubmissions(ids) {
-    const rowMap = new Map(rows.map((submission) => [submission.id, submission]));
-    const targetIds = Array.from(
-      new Set(
-        ids
-          .filter(Boolean)
-          .filter((id) => {
-            const submission = rowMap.get(id);
-            return submission && !pushingIds.includes(submission.id);
-          })
-      )
-    );
-
-    if (targetIds.length === 0) {
-      setConfirmAction(null);
-      notify("请选择需要推送的记录，正在推送中的记录不能重复提交", "warning");
-      return;
-    }
-
+    const rowMap = new Map(rows.map((s) => [s.id, s]));
+    const targetIds = Array.from(new Set(
+      ids.filter(Boolean).filter((id) => { const s = rowMap.get(id); return s && !pushingIds.includes(s.id); })
+    ));
+    if (targetIds.length === 0) { setConfirmAction(null); notify("请选择需要推送的记录", "warning"); return; }
     setConfirmAction(null);
-
     setPushingIds((current) => Array.from(new Set([...current, ...targetIds])));
-
-    setRows((current) =>
-      current.map((submission) =>
-        targetIds.includes(submission.id)
-          ? {
-              ...submission,
-              push_status: "pushing"
-            }
-          : submission
-      )
-    );
-
+    setRows((current) => current.map((s) => targetIds.includes(s.id) ? { ...s, push_status: "pushing" } : s));
     try {
       const res = await fetch("/api/submissions/push", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ ids: targetIds })
       });
-
       const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json.error || "推送失败");
-      }
-
+      if (!res.ok) throw new Error(json.error || "推送失败");
       const resultMap = new Map((json.results || []).filter((item) => item.submission).map((item) => [item.id, item.submission]));
       const failed = (json.results || []).filter((item) => !item.ok);
-
-      setRows((current) =>
-        current.map((submission) => resultMap.get(submission.id) || submission)
-      );
-
+      setRows((current) => current.map((s) => resultMap.get(s.id) || s));
       if (selected?.submission && resultMap.has(selected.submission.id)) {
-        setSelected({
-          ...selected,
-          submission: resultMap.get(selected.submission.id)
-        });
+        setSelected({ ...selected, submission: resultMap.get(selected.submission.id) });
       }
-
-      if (failed.length > 0) {
-        notify(`已完成推送，${failed.length} 条失败`, "warning");
-      } else {
-        notify(`已成功推送 ${targetIds.length} 条记录`, "success");
-      }
+      if (failed.length > 0) notify(`已完成推送，${failed.length} 条失败`, "warning");
+      else notify(`已成功推送 ${targetIds.length} 条记录`, "success");
     } catch (error) {
-      setRows((current) =>
-        current.map((submission) =>
-          targetIds.includes(submission.id)
-            ? {
-                ...submission,
-                push_status: "failed"
-              }
-            : submission
-        )
-      );
+      setRows((current) => current.map((s) => targetIds.includes(s.id) ? { ...s, push_status: "failed" } : s));
       notify(error.message, "error");
     } finally {
       setPushingIds((current) => current.filter((id) => !targetIds.includes(id)));
@@ -865,10 +557,7 @@ export default function AdminSubmissionList({ submissions, templates }) {
   function updateExistingCell(submission, key, value) {
     setDraftRows((current) => ({
       ...current,
-      [submission.id]: {
-        ...(current[submission.id] || {}),
-        [key]: value
-      }
+      [submission.id]: { ...(current[submission.id] || {}), [key]: value }
     }));
   }
 
@@ -877,36 +566,18 @@ export default function AdminSubmissionList({ submissions, templates }) {
   }
 
   function addBlankRow() {
-    if (!templateSlug) {
-      notify("请先选择模板", "warning");
-      return;
-    }
-
+    if (!templateSlug) { notify("请先选择模板", "warning"); return; }
     const data = Object.fromEntries(tableFieldKeys.map((key) => [key, ""]));
     setNewRows((current) => [
       ...current,
-      {
-        id: `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-        template_slug: templateSlug,
-        data
-      }
+      { id: `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`, template_slug: templateSlug, data }
     ]);
     notify("已新增一行，请填写后点击右侧“保存”", "info");
   }
 
   function updateNewCell(rowId, key, value) {
     setNewRows((current) =>
-      current.map((row) =>
-        row.id === rowId
-          ? {
-              ...row,
-              data: {
-                ...(row.data || {}),
-                [key]: value
-              }
-            }
-          : row
-      )
+      current.map((row) => row.id === rowId ? { ...row, data: { ...(row.data || {}), [key]: value } } : row)
     );
   }
 
@@ -914,21 +585,12 @@ export default function AdminSubmissionList({ submissions, templates }) {
     const res = await fetch("/api/submissions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        template_slug: templateSlug,
-        source: "admin",
-        data: row.data || {}
-      })
+      body: JSON.stringify({ template_slug: templateSlug, source: "admin", data: row.data || {} })
     });
-
     const json = await res.json();
-
-    if (!res.ok) {
-      notify(JSON.stringify(json.fields || json.error || json), "error");
-      return;
-    }
-
+    if (!res.ok) { notify(JSON.stringify(json.fields || json.error || json), "error"); return; }
     setRows((current) => [json.submission, ...current]);
+    setTotal((t) => t + 1);
     setNewRows((current) => current.filter((item) => item.id !== row.id));
     notify("新增记录已保存", "success");
   }
@@ -936,11 +598,7 @@ export default function AdminSubmissionList({ submissions, templates }) {
   async function saveExistingRow(submission) {
     try {
       await saveSubmissionPatch(submission, getEditableRowData(submission), submission.status);
-      setDraftRows((current) => {
-        const next = { ...current };
-        delete next[submission.id];
-        return next;
-      });
+      setDraftRows((current) => { const next = { ...current }; delete next[submission.id]; return next; });
       notify("修改内容已保存", "success");
     } catch (error) {
       notify(error.message, "error");
@@ -951,41 +609,22 @@ export default function AdminSubmissionList({ submissions, templates }) {
     const res = await fetch(`/api/submissions/${submission.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        data,
-        status
-      })
+      body: JSON.stringify({ data, status })
     });
-
     const json = await res.json();
-
-    if (!res.ok) {
-      throw new Error(json.error || "保存失败");
-    }
-
-    setRows((current) =>
-      current.map((item) =>
-        item.id === json.submission.id ? json.submission : item
-      )
-    );
-
+    if (!res.ok) throw new Error(json.error || "保存失败");
+    setRows((current) => current.map((item) => item.id === json.submission.id ? json.submission : item));
     if (selected?.submission?.id === json.submission.id) {
-      setSelected({
-        ...selected,
-        submission: json.submission
-      });
+      setSelected({ ...selected, submission: json.submission });
       setEditData(json.submission.data || {});
       setEditStatus(json.submission.status || "");
     }
-
     return json.submission;
   }
 
   async function saveSelectedSubmission() {
     if (!selected?.submission) return;
-
     setEditMessage("");
-
     try {
       const submission = await saveSubmissionPatch(selected.submission, editData, editStatus);
       setEditData(submission.data || {});
@@ -1000,44 +639,22 @@ export default function AdminSubmissionList({ submissions, templates }) {
 
   async function patchSelectedSubmission() {
     if (!selected?.submission) return;
-
     setPatchMessage("");
-
     let patch;
-    try {
-      patch = JSON.parse(patchJson || "{}");
-    } catch (error) {
+    try { patch = JSON.parse(patchJson || "{}"); } catch (error) {
       setPatchMessage(`JSON 格式错误：${error.message}`);
       notify(`JSON 格式错误：${error.message}`, "error");
       return;
     }
-
     const res = await fetch(`/api/submissions/${selected.submission.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        patch,
-        merge: true
-      })
+      body: JSON.stringify({ patch, merge: true })
     });
-
     const json = await res.json();
-
-    if (!res.ok) {
-      setPatchMessage(json.error || "修改失败");
-      notify(json.error || "修改失败", "error");
-      return;
-    }
-
-    setRows((current) =>
-      current.map((submission) =>
-        submission.id === json.submission.id ? json.submission : submission
-      )
-    );
-    setSelected({
-      ...selected,
-      submission: json.submission
-    });
+    if (!res.ok) { setPatchMessage(json.error || "修改失败"); notify(json.error || "修改失败", "error"); return; }
+    setRows((current) => current.map((s) => s.id === json.submission.id ? json.submission : s));
+    setSelected({ ...selected, submission: json.submission });
     setPatchMessage("字段已写入。新增字段只保存在提交数据中，不会显示到公开模板表单。");
     notify("字段已合并写入", "success");
   }
@@ -1057,77 +674,70 @@ export default function AdminSubmissionList({ submissions, templates }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>高级筛选</CardTitle>
-          <CardDescription>支持模板、状态、来源、日期、字段值和关键词组合查询。</CardDescription>
+          <CardTitle>筛选查询</CardTitle>
+          <CardDescription>支持模板、状态、来源、日期和关键词组合查询，点击&ldquo;查询&rdquo;从服务端加载数据。</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-2">
               <Label>模板</Label>
-              <Select value={templateSlug} onChange={(event) => setTemplateSlug(event.target.value)}>
+              <Select value={templateSlug} onChange={(e) => setTemplateSlug(e.target.value)}>
                 {templateItems.length === 0 ? <option value="">暂无模板</option> : null}
-                {templateItems.map((template) => (
-                  <option key={template.id} value={template.slug}>
-                    {template.name}
-                  </option>
+                {templateItems.map((t) => (
+                  <option key={t.id} value={t.slug}>{t.name}</option>
                 ))}
               </Select>
             </div>
 
             <div className="space-y-2">
               <Label>状态</Label>
-              <Select value={status} onChange={(event) => setStatus(event.target.value)}>
+              <Select value={status} onChange={(e) => setStatus(e.target.value)}>
                 <option value="">全部状态</option>
-                {statuses.map((item) => (
-                  <option key={item} value={item}>{item}</option>
+                {["new", "pending", "processing", "completed", "failed"].map((s) => (
+                  <option key={s} value={s}>{s}</option>
                 ))}
               </Select>
             </div>
 
             <div className="space-y-2">
               <Label>来源</Label>
-              <Select value={source} onChange={(event) => setSource(event.target.value)}>
+              <Select value={source} onChange={(e) => setSource(e.target.value)}>
                 <option value="">全部来源</option>
-                {sources.map((item) => (
-                  <option key={item} value={item}>{item}</option>
+                {["web", "api", "admin"].map((s) => (
+                  <option key={s} value={s}>{s}</option>
                 ))}
               </Select>
             </div>
 
             <div className="space-y-2">
               <Label>关键词</Label>
-              <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="编号、姓名、电话、内容..." />
+              <Input
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="编号、姓名、电话、内容..."
+                onKeyDown={(e) => e.key === "Enter" && fetchPage(1)}
+              />
             </div>
 
             <div className="space-y-2">
               <Label>开始日期</Label>
-              <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
             </div>
 
             <div className="space-y-2">
               <Label>结束日期</Label>
-              <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-            </div>
-
-            <div className="space-y-2">
-              <Label>字段筛选</Label>
-              <Select value={fieldKey} onChange={(event) => setFieldKey(event.target.value)}>
-                <option value="">不按字段筛选</option>
-                {allDataKeys.map((key) => (
-                  <option key={key} value={key}>{getFieldLabel(key)}</option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>字段值包含</Label>
-              <Input value={fieldValue} onChange={(event) => setFieldValue(event.target.value)} placeholder="字段内容关键词" disabled={!fieldKey} />
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
             </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" onClick={resetFilters}>重置筛选</Button>
-            <div className="text-sm text-muted-foreground">当前显示 {filtered.length} / {rows.length} 条</div>
+            <Button type="button" onClick={() => fetchPage(1)} disabled={loading}>
+              {loading ? "查询中..." : "查询"}
+            </Button>
+            <Button type="button" variant="outline" onClick={resetFilters} disabled={loading}>重置</Button>
+            <div className="text-sm text-muted-foreground">
+              共 {total} 条，第 {page} / {totalPages} 页，每页 {PAGE_SIZE} 条
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1137,17 +747,22 @@ export default function AdminSubmissionList({ submissions, templates }) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle>提交结果表格</CardTitle>
-              <CardDescription>云表格模式：默认显示当前模板全部提交信息，可直接在单元格内修改；新增行填写后点击最右侧保存。仅模板配置中开启查重提醒的字段会进行重复值高亮。</CardDescription>
+              <CardDescription>云表格模式：可直接在单元格内修改；新增行填写后点击最右侧保存。仅模板配置中开启查重提醒的字段会进行重复值高亮。</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button type="button" onClick={addBlankRow} disabled={!templateSlug || tableFieldKeys.length === 0}>
                 新增一行
               </Button>
-              <Button type="button" variant="outline" onClick={() => requestPushSubmissions(checkedIds)} disabled={checkedIds.length === 0 || pushingIds.length > 0}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => requestPushSubmissions(checkedIds)}
+                disabled={checkedIds.length === 0 || pushingIds.length > 0}
+              >
                 批量推送{checkedIds.length > 0 ? ` (${checkedIds.length})` : ""}
               </Button>
-              <Button type="button" variant="outline" onClick={exportFilteredResults} disabled={filtered.length === 0 || tableFieldKeys.length === 0}>
-                导出查询结果
+              <Button type="button" variant="outline" onClick={exportAllResults} disabled={total === 0 || tableFieldKeys.length === 0 || exporting}>
+                {exporting ? "导出中..." : `导出全部 (${total})`}
               </Button>
             </div>
           </div>
@@ -1158,27 +773,16 @@ export default function AdminSubmissionList({ submissions, templates }) {
             <div className="mb-3 flex flex-col gap-2 sm:flex-row">
               <Input
                 value={newColumnName}
-                onChange={(event) => setNewColumnName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addCustomColumn();
-                  }
-                }}
+                onChange={(e) => setNewColumnName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomColumn(); } }}
                 placeholder="输入新增列名称，例如：内部备注"
               />
-              <Button type="button" variant="outline" onClick={addCustomColumn}>
-                新增列
-              </Button>
+              <Button type="button" variant="outline" onClick={addCustomColumn}>新增列</Button>
             </div>
             <div className="flex max-h-28 flex-wrap gap-2 overflow-auto">
               {allDataKeys.map((key) => (
                 <label key={key} className="flex items-center gap-1 rounded-full border px-2 py-1 text-xs" title={key}>
-                  <input
-                    type="checkbox"
-                    checked={tableFieldKeys.includes(key)}
-                    onChange={() => toggleVisibleField(key)}
-                  />
+                  <input type="checkbox" checked={tableFieldKeys.includes(key)} onChange={() => toggleVisibleField(key)} />
                   {getFieldLabel(key)}
                 </label>
               ))}
@@ -1193,17 +797,13 @@ export default function AdminSubmissionList({ submissions, templates }) {
                   <th className="w-12 rounded-tl-xl border-b border-r px-3 py-3 text-center font-semibold text-slate-700">
                     <input
                       type="checkbox"
-                      checked={filtered.length > 0 && filtered.every((submission) => checkedIds.includes(submission.id))}
-                      onChange={(event) => toggleAllFiltered(event.target.checked)}
-                      aria-label="选择当前筛选结果"
+                      checked={rows.length > 0 && rows.every((s) => checkedIds.includes(s.id))}
+                      onChange={(e) => setCheckedIds(e.target.checked ? rows.map((s) => s.id) : [])}
+                      aria-label="选择当前页全部"
                     />
                   </th>
                   {tableFieldKeys.map((key) => (
-                    <th
-                      key={key}
-                      className="whitespace-nowrap border-b border-r px-3 py-3 text-left font-semibold text-slate-700"
-                      title={key}
-                    >
+                    <th key={key} className="whitespace-nowrap border-b border-r px-3 py-3 text-left font-semibold text-slate-700" title={key}>
                       {getFieldLabel(key)}
                     </th>
                   ))}
@@ -1214,27 +814,19 @@ export default function AdminSubmissionList({ submissions, templates }) {
               <tbody>
                 {newRows.map((row) => {
                   const duplicate = findFirstDuplicateInData(row.data, row.id);
-
                   return (
                     <tr key={row.id} className={`transition-colors ${duplicate ? "bg-amber-50 hover:bg-amber-100/70" : "bg-blue-50/70 hover:bg-blue-50"}`}>
                       <td className="border-b border-r px-3 py-2 text-center align-middle">
                         <input type="checkbox" disabled aria-label="新增行保存后才可推送" />
                       </td>
                       {tableFieldKeys.map((key) => {
-                        const duplicateSubmission = findDuplicateForValue(key, row.data?.[key], row.id);
+                        const dupSub = findDuplicateForValue(key, row.data?.[key], row.id);
                         const fieldDef = getFieldDefinition(key);
-
                         return (
-                          <td key={key} className={`max-w-[240px] border-b border-r px-3 py-2 align-middle ${duplicateSubmission ? "border-amber-200 bg-amber-50" : ""}`}>
-                            {renderAdminEditableCell({
-                              rowId: row.id,
-                              data: row.data,
-                              key,
-                              duplicate: Boolean(duplicateSubmission),
-                              onUpdate: updateNewCell
-                            })}
+                          <td key={key} className={`max-w-[240px] border-b border-r px-3 py-2 align-middle ${dupSub ? "border-amber-200 bg-amber-50" : ""}`}>
+                            {renderAdminEditableCell({ rowId: row.id, data: row.data, key, duplicate: Boolean(dupSub), onUpdate: updateNewCell })}
                             {fieldDef.help ? <p className="mt-1 text-xs text-muted-foreground">{fieldDef.help}</p> : null}
-                            {duplicateSubmission ? <p className="mt-1 text-xs font-medium text-amber-700">与记录 {duplicateSubmission.id} 重复</p> : null}
+                            {dupSub ? <p className="mt-1 text-xs font-medium text-amber-700">与记录 {dupSub.id} 重复</p> : null}
                           </td>
                         );
                       })}
@@ -1242,32 +834,19 @@ export default function AdminSubmissionList({ submissions, templates }) {
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">待保存</span>
                       </td>
                       <td className="sticky right-0 whitespace-nowrap border-b bg-background px-3 py-2 align-middle shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.55)]">
-                      <div className="flex gap-2">
-                        <Button type="button" size="sm" onClick={() => saveNewRow(row)}>
-                          保存
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setNewRows((current) => current.filter((item) => item.id !== row.id));
-                            notify("已取消新增行", "info");
-                          }}
-                        >
-                          取消
-                        </Button>
-                      </div>
-                      {duplicate ? <p className="mt-2 text-xs font-medium text-amber-700">字段「{getFieldLabel(duplicate.key)}」与记录 {duplicate.submission.id} 重复</p> : null}
-                    </td>
-                  </tr>
+                        <div className="flex gap-2">
+                          <Button type="button" size="sm" onClick={() => saveNewRow(row)}>保存</Button>
+                          <Button type="button" size="sm" variant="outline" onClick={() => { setNewRows((c) => c.filter((r) => r.id !== row.id)); notify("已取消新增行", "info"); }}>取消</Button>
+                        </div>
+                        {duplicate ? <p className="mt-2 text-xs font-medium text-amber-700">字段「{getFieldLabel(duplicate.key)}」与记录 {duplicate.submission.id} 重复</p> : null}
+                      </td>
+                    </tr>
                   );
                 })}
 
-                {filtered.map((submission) => {
+                {rows.map((submission) => {
                   const editableData = getEditableRowData(submission);
                   const duplicate = hasAnyDuplicateExistingCell(submission);
-
                   return (
                     <tr key={submission.id} className={`transition-colors ${duplicate ? "bg-amber-50 hover:bg-amber-100/70" : "odd:bg-white even:bg-slate-50/70 hover:bg-blue-50/70"}`}>
                       <td className="border-b border-r px-3 py-2 text-center align-middle">
@@ -1279,20 +858,13 @@ export default function AdminSubmissionList({ submissions, templates }) {
                         />
                       </td>
                       {tableFieldKeys.map((key) => {
-                        const duplicateCell = hasDuplicateExistingCell(submission, key);
+                        const dupCell = hasDuplicateExistingCell(submission, key);
                         const fieldDef = getFieldDefinition(key);
-
                         return (
-                          <td key={key} className={`max-w-[240px] border-b border-r px-3 py-2 align-middle ${duplicateCell ? "border-amber-200 bg-amber-50" : ""}`}>
-                            {renderAdminEditableCell({
-                              rowId: submission,
-                              data: editableData,
-                              key,
-                              duplicate: duplicateCell,
-                              onUpdate: updateExistingCell
-                            })}
+                          <td key={key} className={`max-w-[240px] border-b border-r px-3 py-2 align-middle ${dupCell ? "border-amber-200 bg-amber-50" : ""}`}>
+                            {renderAdminEditableCell({ rowId: submission, data: editableData, key, duplicate: dupCell, onUpdate: updateExistingCell })}
                             {fieldDef.help ? <p className="mt-1 text-xs text-muted-foreground">{fieldDef.help}</p> : null}
-                            {duplicateCell ? <p className="mt-1 text-xs font-medium text-amber-700">重复值</p> : null}
+                            {dupCell ? <p className="mt-1 text-xs font-medium text-amber-700">重复值</p> : null}
                           </td>
                         );
                       })}
@@ -1306,18 +878,10 @@ export default function AdminSubmissionList({ submissions, templates }) {
                       </td>
                       <td className={`sticky right-0 whitespace-nowrap border-b px-3 py-2 align-middle shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.55)] ${duplicate ? "bg-amber-50" : "bg-background"}`}>
                         <div className="flex gap-2">
-                          <Button type="button" size="sm" onClick={() => saveExistingRow(submission)} disabled={!hasDraftChanges(submission)}>
-                            保存
-                          </Button>
-                          <Button type="button" size="sm" variant="outline" onClick={() => requestPushSubmissions([submission.id])} disabled={!canPushSubmission(submission)}>
-                            {getPushButtonText(submission)}
-                          </Button>
-                          <Button type="button" size="sm" variant="outline" onClick={() => loadDetail(submission)}>
-                            详情
-                          </Button>
-                          <Button type="button" size="sm" variant="destructive" onClick={() => requestDeleteSubmission(submission)}>
-                            删除
-                          </Button>
+                          <Button type="button" size="sm" onClick={() => saveExistingRow(submission)} disabled={!hasDraftChanges(submission)}>保存</Button>
+                          <Button type="button" size="sm" variant="outline" onClick={() => requestPushSubmissions([submission.id])} disabled={!canPushSubmission(submission)}>{getPushButtonText(submission)}</Button>
+                          <Button type="button" size="sm" variant="outline" onClick={() => loadDetail(submission)}>详情</Button>
+                          <Button type="button" size="sm" variant="destructive" onClick={() => requestDeleteSubmission(submission)}>删除</Button>
                         </div>
                         {duplicate ? <p className="mt-2 text-xs font-semibold text-amber-700">疑似重复</p> : null}
                       </td>
@@ -1325,35 +889,55 @@ export default function AdminSubmissionList({ submissions, templates }) {
                   );
                 })}
 
-                {filtered.length === 0 && newRows.length === 0 ? (
+                {rows.length === 0 && newRows.length === 0 ? (
                   <tr>
                     <td colSpan={3 + tableFieldKeys.length} className="px-3 py-10 text-center text-muted-foreground">
-                      当前模板暂无提交记录，点击“新增一行”开始填写
+                      {loading ? "加载中..." : "暂无数据，请设置筛选条件后点击“查询”"}
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
           </div>
+
+          {totalPages > 1 && (
+            <div className="mt-3 flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">共 {total} 条，第 {page} / {totalPages} 页</span>
+              <div className="flex gap-1">
+                <Button type="button" variant="outline" size="sm" onClick={() => fetchPage(1)} disabled={page === 1 || loading}>首页</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => fetchPage(page - 1)} disabled={page === 1 || loading}>上一页</Button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                  .reduce((acc, p, idx, arr) => {
+                    if (idx > 0 && p - arr[idx - 1] > 1) acc.push("...");
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((p, idx) =>
+                    p === "..." ? (
+                      <span key={`e${idx}`} className="flex h-8 items-center px-2 text-sm text-muted-foreground">...</span>
+                    ) : (
+                      <Button key={p} type="button" variant={p === page ? "default" : "outline"} size="sm" className="min-w-[32px]" onClick={() => fetchPage(p)} disabled={loading}>
+                        {p}
+                      </Button>
+                    )
+                  )}
+                <Button type="button" variant="outline" size="sm" onClick={() => fetchPage(page + 1)} disabled={page === totalPages || loading}>下一页</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => fetchPage(totalPages)} disabled={page === totalPages || loading}>末页</Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {selected?.submission ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-transparent p-3 sm:p-4" role="dialog" aria-modal="true">
-          <button
-            type="button"
-            aria-label="关闭详情"
-            className="absolute inset-0 cursor-default"
-            onClick={() => setSelected(null)}
-          />
+          <button type="button" aria-label="关闭详情" className="absolute inset-0 cursor-default" onClick={() => setSelected(null)} />
           <div
             className="relative z-10 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl sm:max-w-5xl"
             style={{ transform: `translate(${modalPosition.x}px, ${modalPosition.y}px)` }}
           >
-            <div
-              className="flex cursor-move select-none flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between"
-              onMouseDown={startDrag}
-            >
+            <div className="flex cursor-move select-none flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between" onMouseDown={startDrag}>
               <div>
                 <h3 className="text-lg font-semibold">提交详情</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -1361,12 +945,8 @@ export default function AdminSubmissionList({ submissions, templates }) {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button type="button" variant="destructive" size="sm" onClick={() => requestDeleteSubmission(selected.submission)}>
-                  删除
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => setSelected(null)}>
-                  关闭
-                </Button>
+                <Button type="button" variant="destructive" size="sm" onClick={() => requestDeleteSubmission(selected.submission)}>删除</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setSelected(null)}>关闭</Button>
               </div>
             </div>
 
@@ -1401,10 +981,9 @@ export default function AdminSubmissionList({ submissions, templates }) {
                           <div className="mt-1">{selected.submission.pushed_at ? formatDate(selected.submission.pushed_at) : "-"}</div>
                         </div>
                       </div>
-
                       <div className="grid gap-3 sm:grid-cols-2">
                         {Array.from(new Set([
-                          ...((templateItems.find((template) => template.slug === selected.submission.template_slug)?.fields || []).map((field) => field.key)),
+                          ...((templateItems.find((t) => t.slug === selected.submission.template_slug)?.fields || []).map((f) => f.key)),
                           ...Object.keys(selected.submission.data || {})
                         ].filter(Boolean))).map((key) => (
                           <div key={key} className="rounded-md border p-3 text-sm">
@@ -1428,16 +1007,14 @@ export default function AdminSubmissionList({ submissions, templates }) {
                   <CardContent>
                     <div className="space-y-2">
                       {(selected.webhookLogs || []).map((log) => (
-                        <div key={log.id} className="rounded-md border p-3 text-sm overflow-hidden">
+                        <div key={log.id} className="overflow-hidden rounded-md border p-3 text-sm">
                           <div className="flex items-start justify-between gap-2">
-                            <span className="break-all text-xs font-mono leading-5 min-w-0">{log.url}</span>
+                            <span className="min-w-0 break-all font-mono text-xs leading-5">{log.url}</span>
                             <Badge className="shrink-0" variant={log.ok ? "secondary" : "outline"}>{log.ok ? "成功" : "失败"}</Badge>
                           </div>
-                          <div className="mt-1.5 text-xs text-muted-foreground">
-                            HTTP {log.status_code} · {formatDate(log.created_at)}
-                          </div>
+                          <div className="mt-1.5 text-xs text-muted-foreground">HTTP {log.status_code} · {formatDate(log.created_at)}</div>
                           {log.last_response ? (
-                            <pre className="mt-2 max-h-40 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap break-all">
+                            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">
                               {JSON.stringify(log.last_response, null, 2)}
                             </pre>
                           ) : null}
@@ -1455,16 +1032,10 @@ export default function AdminSubmissionList({ submissions, templates }) {
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">额外字段写入</CardTitle>
-                    <CardDescription>
-                      如需通过 API 方式补充内部备注等额外字段，可在此合并写入 data。
-                    </CardDescription>
+                    <CardDescription>如需通过 API 方式补充内部备注等额外字段，可在此合并写入 data。</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Textarea
-                      className="min-h-40 font-mono text-xs"
-                      value={patchJson}
-                      onChange={(event) => setPatchJson(event.target.value)}
-                    />
+                    <Textarea className="min-h-40 font-mono text-xs" value={patchJson} onChange={(e) => setPatchJson(e.target.value)} />
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                       <Button type="button" size="sm" onClick={patchSelectedSubmission}>合并写入字段</Button>
                       {patchMessage ? <span className="text-xs text-muted-foreground">{patchMessage}</span> : null}

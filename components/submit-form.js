@@ -80,6 +80,11 @@ export default function SubmitForm({ template, submissions = [] }) {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [submitting, setSubmitting] = useState(false);
+  const [keyword, setKeyword] = useState("");
+  const [filterFieldKey, setFilterFieldKey] = useState("");
+  const [filterFieldValue, setFilterFieldValue] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   useEffect(() => {
     setRows((current) =>
@@ -100,6 +105,31 @@ export default function SubmitForm({ template, submissions = [] }) {
       )
     );
   }, [fields]);
+
+  const filteredSubmittedRows = useMemo(() => {
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    const normalizedFilterValue = filterFieldValue.trim().toLowerCase();
+    const fromTime = dateFrom ? new Date(dateFrom).getTime() : null;
+    const toTime = dateTo ? new Date(dateTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
+
+    return submittedRows.filter((submission) => {
+      if (fromTime || toTime) {
+        const createdAt = new Date(submission.created_at).getTime();
+        if (fromTime && createdAt < fromTime) return false;
+        if (toTime && createdAt > toTime) return false;
+      }
+      if (filterFieldKey) {
+        const value = String(submission.data?.[filterFieldKey] ?? "").toLowerCase();
+        if (!value) return false;
+        if (normalizedFilterValue && !value.includes(normalizedFilterValue)) return false;
+      }
+      if (normalizedKeyword) {
+        const haystack = fields.map((field) => String(submission.data?.[field.key] ?? "")).join(" ").toLowerCase();
+        if (!haystack.includes(normalizedKeyword)) return false;
+      }
+      return true;
+    });
+  }, [submittedRows, keyword, filterFieldKey, filterFieldValue, dateFrom, dateTo, fields]);
 
   const duplicateCellMap = useMemo(() => {
     const valueMap = new Map();
@@ -175,7 +205,7 @@ export default function SubmitForm({ template, submissions = [] }) {
 
   function addRow() {
     setRows((current) => [createEmptyRow(fields), ...current]);
-    setMessage("已新增一行，已置顶显示，请填写后点击右侧“保存提交”。");
+    setMessage(`已新增一行，已置顶显示，请填写后点击右侧"保存提交"。`);
     setMessageType("info");
   }
 
@@ -413,6 +443,61 @@ export default function SubmitForm({ template, submissions = [] }) {
         </Button>
       </div>
 
+      {submittedRows.length > 0 && (
+        <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">关键词搜索</label>
+            <Input
+              type="text"
+              placeholder="搜索所有字段..."
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              className="h-9 w-44"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">按字段筛选</label>
+            <Select value={filterFieldKey} onChange={(e) => setFilterFieldKey(e.target.value)} className="h-9 w-36">
+              <option value="">全部字段</option>
+              {fields.map((f) => (
+                <option key={f.key} value={f.key}>{f.label}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">字段值</label>
+            <Input
+              type="text"
+              placeholder="输入筛选值..."
+              value={filterFieldValue}
+              onChange={(e) => setFilterFieldValue(e.target.value)}
+              disabled={!filterFieldKey}
+              className="h-9 w-36"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">开始日期</label>
+            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 w-36" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">结束日期</label>
+            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 w-36" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 rounded-lg"
+            onClick={() => { setKeyword(""); setFilterFieldKey(""); setFilterFieldValue(""); setDateFrom(""); setDateTo(""); }}
+          >
+            重置
+          </Button>
+          <span className="ml-auto text-xs text-slate-500">
+            {filteredSubmittedRows.length} / {submittedRows.length} 条记录
+          </span>
+        </div>
+      )}
+
       <div className="max-h-[70vh] overflow-auto rounded-2xl border border-slate-200 bg-white shadow-inner">
         <table className="w-full min-w-[1200px] border-separate border-spacing-0 text-sm">
           <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur">
@@ -475,7 +560,7 @@ export default function SubmitForm({ template, submissions = [] }) {
               );
             })}
 
-            {submittedRows.map((submission) => {
+            {filteredSubmittedRows.map((submission) => {
               const editing = editingRows[submission.id];
               const duplicate = hasAnyDuplicateCell(submission);
               const editDuplicate = editing ? findDuplicateCellInfo(editing.data, submission.id) : null;
@@ -546,7 +631,15 @@ export default function SubmitForm({ template, submissions = [] }) {
               <tr>
                 <td colSpan={fields.length + 1} className="px-3 py-14 text-center text-slate-500">
                   <div className="font-medium text-slate-700">暂无提交记录</div>
-                  <div className="mt-1 text-sm">点击右上方“新增填写”开始录入第一条信息</div>
+                  <div className="mt-1 text-sm">{`点击右上方"新增填写"开始录入第一条信息`}</div>
+                </td>
+              </tr>
+            ) : null}
+            {submittedRows.length > 0 && filteredSubmittedRows.length === 0 && rows.length === 0 ? (
+              <tr>
+                <td colSpan={fields.length + 1} className="px-3 py-14 text-center text-slate-500">
+                  <div className="font-medium text-slate-700">没有匹配的记录</div>
+                  <div className="mt-1 text-sm">尝试调整筛选条件</div>
                 </td>
               </tr>
             ) : null}
