@@ -131,28 +131,75 @@ export default function AdminSubmissionList({ submissions: initialSubmissions, t
     const dupClass = duplicate ? "border-amber-300 bg-amber-100/80 font-semibold text-amber-900 focus-visible:ring-amber-400" : "";
 
     if (normalizedType === "multiselect") {
-      const selected = String(value) ? String(value).split("+").map((v) => v.trim()).filter(Boolean) : [];
+      const selectedVals = String(value) ? String(value).split("+").map((v) => v.trim()).filter(Boolean) : [];
       const toggle = (opt) => {
-        const next = selected.includes(opt) ? selected.filter((v) => v !== opt) : [...selected, opt];
+        const next = selectedVals.includes(opt) ? selectedVals.filter((v) => v !== opt) : [...selectedVals, opt];
         onUpdate(rowId, key, next.join("+"));
       };
-      const displayText = selected.length > 0 ? selected.join(" + ") : "请选择";
+      const removeCustom = (opt) => {
+        const next = selectedVals.filter((v) => v !== opt);
+        onUpdate(rowId, key, next.join("+"));
+      };
+      const displayText = selectedVals.length > 0 ? selectedVals.join(" + ") : "请选择";
+      const customVals = selectedVals.filter((v) => !options.includes(v));
+      const inputId = `ms-input-${rowId}-${key}`;
+      const addCustomValue = () => {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        const v = input.value.trim();
+        if (!v) return;
+        if (!selectedVals.includes(v)) {
+          onUpdate(rowId, key, [...selectedVals, v].join("+"));
+        }
+        input.value = "";
+      };
       return (
         <details className="group relative min-w-44">
           <summary className={`flex h-8 cursor-pointer list-none items-center justify-between rounded-md border px-2 text-sm transition [&::-webkit-details-marker]:hidden ${duplicate ? "border-amber-300 bg-amber-100/80 font-semibold text-amber-900" : "border-input bg-background hover:border-ring"}`}>
-            <span className={selected.length > 0 ? "" : "text-muted-foreground"}>{displayText}</span>
+            <span className={selectedVals.length > 0 ? "" : "text-muted-foreground"}>{displayText}</span>
             <svg className="h-3.5 w-3.5 shrink-0 opacity-50 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </summary>
-          <div className="absolute z-20 mt-0.5 w-full rounded-md border border-input bg-background py-1 shadow-md">
+          <div className="absolute z-20 mt-0.5 min-w-full rounded-md border border-input bg-background py-1 shadow-md">
             {options.map((opt) => (
               <label key={opt} className="flex cursor-pointer items-center gap-2 px-2 py-1 text-sm hover:bg-muted">
-                <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} className="rounded" />
+                <input type="checkbox" checked={selectedVals.includes(opt)} onChange={() => toggle(opt)} className="rounded" />
                 {opt}
               </label>
             ))}
-            {options.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">{String(value) || "—"}</p>}
+            {customVals.map((opt) => (
+              <div key={opt} className="flex items-center justify-between gap-1 px-2 py-1 text-sm">
+                <span className="flex items-center gap-1.5">
+                  <input type="checkbox" checked readOnly className="rounded" />
+                  <span className="text-blue-700">{opt}</span>
+                  <span className="text-xs text-muted-foreground">(自定义)</span>
+                </span>
+                <button type="button" onClick={() => removeCustom(opt)} className="text-xs text-red-500 hover:text-red-700">✕</button>
+              </div>
+            ))}
+            {options.length === 0 && customVals.length === 0 && (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">暂无预设选项</p>
+            )}
+            <div className="mt-1 border-t px-2 pt-1.5 pb-1">
+              <div className="flex gap-1">
+                <input
+                  id={inputId}
+                  type="text"
+                  placeholder="手动输入值后回车"
+                  className="h-6 flex-1 rounded border border-input bg-background px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomValue(); } }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); addCustomValue(); }}
+                  className="h-6 rounded bg-primary px-1.5 text-xs text-primary-foreground hover:bg-primary/90"
+                >
+                  添加
+                </button>
+              </div>
+            </div>
           </div>
         </details>
       );
