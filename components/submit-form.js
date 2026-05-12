@@ -294,6 +294,43 @@ export default function SubmitForm({ template, submissions = [] }) {
       );
     }
 
+    if (field.type === "multiselect") {
+      const rawValue = getCellValue(field, data) || "";
+      const selected = rawValue ? rawValue.split("+").map((v) => v.trim()).filter(Boolean) : [];
+      const toggle = (opt) => {
+        const next = selected.includes(opt) ? selected.filter((v) => v !== opt) : [...selected, opt];
+        onUpdate(id, field.key, next.join("+"));
+      };
+      const displayText = selected.length > 0 ? selected.join(" + ") : (field.placeholder || "请选择");
+      return (
+        <details className="group relative min-w-44">
+          <summary className="flex h-10 cursor-pointer list-none items-center justify-between rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm transition hover:border-slate-300 [&::-webkit-details-marker]:hidden">
+            <span className={selected.length > 0 ? "text-foreground" : "text-muted-foreground"}>{displayText}</span>
+            <svg className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </summary>
+          <div className="absolute z-20 mt-1 w-full rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+            {(field.options || []).map((opt) => {
+              const active = selected.includes(opt);
+              return (
+                <label key={opt} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={active}
+                    onChange={() => toggle(opt)}
+                    className="rounded"
+                  />
+                  {opt}
+                </label>
+              );
+            })}
+            {(field.options || []).length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">暂无选项</p>}
+          </div>
+        </details>
+      );
+    }
+
     if (field.type === "checkbox") {
       return (
         <label className="flex h-10 min-w-36 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm">

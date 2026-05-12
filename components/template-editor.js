@@ -13,6 +13,7 @@ const FIELD_TYPES = [
   { type: "number", label: "数字", icon: "#", description: "数量、金额、评分" },
   { type: "textarea", label: "多行文本", icon: "¶", description: "备注、详细说明" },
   { type: "select", label: "下拉选择", icon: "▾", description: "业务类型、状态选项" },
+  { type: "multiselect", label: "下拉多选", icon: "☰", description: "多选标签，值以+连接" },
   { type: "date", label: "日期", icon: "📅", description: "预约日期、跟进日期" },
   { type: "checkbox", label: "复选框", icon: "☑", description: "确认、是否类字段" }
 ];
@@ -40,8 +41,8 @@ function createField(type = "text", index = 1) {
     key: `${type}_${Date.now().toString(36)}_${index}`,
     label: item.label,
     type,
-    placeholder: type === "select" ? "请选择" : `请输入${item.label}`,
-    optionsText: type === "select" ? "选项一\n选项二\n选项三" : "",
+    placeholder: (type === "select" || type === "multiselect") ? "请选择" : `请输入${item.label}`,
+    optionsText: (type === "select" || type === "multiselect") ? "选项一\n选项二\n选项三" : "",
     width: type === "textarea" ? "full" : "half"
   };
 }
@@ -77,7 +78,7 @@ function toApiField(field) {
   if (field.duplicateCheck) result.duplicateCheck = true;
   if (field.adminOnly) result.adminOnly = true;
 
-  if (field.type === "select") {
+  if (field.type === "select" || field.type === "multiselect") {
     result.options = field.optionsText
       .split("\n")
       .map((item) => item.trim())
@@ -97,6 +98,16 @@ function FieldPreview({ field }) {
   if (field.type === "select") {
     const firstOption = field.optionsText.split("\n").find(Boolean) || "请选择";
     return <div className={commonClass}>{firstOption}</div>;
+  }
+
+  if (field.type === "multiselect") {
+    const firstOption = field.optionsText.split("\n").find(Boolean) || "选项一";
+    return (
+      <div className={`${commonClass} flex items-center gap-1`}>
+        <span className="rounded border px-1.5 py-0.5 text-xs">{firstOption}</span>
+        <span className="text-muted-foreground text-xs">+...</span>
+      </div>
+    );
   }
 
   if (field.type === "checkbox") {
@@ -704,9 +715,9 @@ export default function TemplateEditor({ templates }) {
                     <Input value={activeField.help} onChange={(event) => updateActiveField({ help: event.target.value })} />
                   </div>
 
-                  {activeField.type === "select" ? (
+                  {(activeField.type === "select" || activeField.type === "multiselect") ? (
                     <div className="space-y-2">
-                      <Label>下拉选项，每行一个</Label>
+                      <Label>{activeField.type === "multiselect" ? "多选选项，每行一个" : "下拉选项，每行一个"}</Label>
                       <Textarea value={activeField.optionsText} onChange={(event) => updateActiveField({ optionsText: event.target.value })} />
                     </div>
                   ) : null}

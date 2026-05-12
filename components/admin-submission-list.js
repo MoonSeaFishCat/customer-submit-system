@@ -55,9 +55,6 @@ export default function AdminSubmissionList({ submissions: initialSubmissions, t
   const [patchJson, setPatchJson] = useState("{\n  \"internal_note\": \"\"\n}");
   const [patchMessage, setPatchMessage] = useState("");
   const [notice, setNotice] = useState(null);
-  const [editData, setEditData] = useState({});
-  const [editStatus, setEditStatus] = useState("");
-  const [editMessage, setEditMessage] = useState("");
   const [draftRows, setDraftRows] = useState({});
   const [newRows, setNewRows] = useState([]);
   const [checkedIds, setCheckedIds] = useState([]);
@@ -133,7 +130,35 @@ export default function AdminSubmissionList({ submissions: initialSubmissions, t
     const value = data?.[key] === undefined || data?.[key] === null ? "" : data[key];
     const dupClass = duplicate ? "border-amber-300 bg-amber-100/80 font-semibold text-amber-900 focus-visible:ring-amber-400" : "";
 
-    if (normalizedType === "select" || options.length > 0) {
+    if (normalizedType === "multiselect") {
+      const selected = String(value) ? String(value).split("+").map((v) => v.trim()).filter(Boolean) : [];
+      const toggle = (opt) => {
+        const next = selected.includes(opt) ? selected.filter((v) => v !== opt) : [...selected, opt];
+        onUpdate(rowId, key, next.join("+"));
+      };
+      const displayText = selected.length > 0 ? selected.join(" + ") : "请选择";
+      return (
+        <details className="group relative min-w-44">
+          <summary className={`flex h-8 cursor-pointer list-none items-center justify-between rounded-md border px-2 text-sm transition [&::-webkit-details-marker]:hidden ${duplicate ? "border-amber-300 bg-amber-100/80 font-semibold text-amber-900" : "border-input bg-background hover:border-ring"}`}>
+            <span className={selected.length > 0 ? "" : "text-muted-foreground"}>{displayText}</span>
+            <svg className="h-3.5 w-3.5 shrink-0 opacity-50 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </summary>
+          <div className="absolute z-20 mt-0.5 w-full rounded-md border border-input bg-background py-1 shadow-md">
+            {options.map((opt) => (
+              <label key={opt} className="flex cursor-pointer items-center gap-2 px-2 py-1 text-sm hover:bg-muted">
+                <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} className="rounded" />
+                {opt}
+              </label>
+            ))}
+            {options.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">{String(value) || "—"}</p>}
+          </div>
+        </details>
+      );
+    }
+
+    if (normalizedType === "select" || (options.length > 0 && normalizedType !== "multiselect")) {
       return (
         <select
           className={`h-8 min-w-40 rounded-md border bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${duplicate ? dupClass : "border-input"}`}
@@ -279,9 +304,6 @@ export default function AdminSubmissionList({ submissions: initialSubmissions, t
     if (!res.ok) { notify(json.error || "详情加载失败", "error"); return; }
     setSelected(json);
     setPatchMessage("");
-    setEditMessage("");
-    setEditData(json.submission?.data || {});
-    setEditStatus(json.submission?.status || "");
     setModalPosition({ x: 0, y: 0 });
   }
 
@@ -454,8 +476,6 @@ ${bodyRows}
     document.addEventListener("mouseup", onMouseUp);
   }
 
-  function updateEditField(key, value) { setEditData((current) => ({ ...current, [key]: value })); }
-
   function getSubmissionTemplate(submission) {
     return templateItems.find((t) => t.slug === submission.template_slug);
   }
@@ -616,25 +636,8 @@ ${bodyRows}
     setRows((current) => current.map((item) => item.id === json.submission.id ? json.submission : item));
     if (selected?.submission?.id === json.submission.id) {
       setSelected({ ...selected, submission: json.submission });
-      setEditData(json.submission.data || {});
-      setEditStatus(json.submission.status || "");
     }
     return json.submission;
-  }
-
-  async function saveSelectedSubmission() {
-    if (!selected?.submission) return;
-    setEditMessage("");
-    try {
-      const submission = await saveSubmissionPatch(selected.submission, editData, editStatus);
-      setEditData(submission.data || {});
-      setEditStatus(submission.status || "");
-      setEditMessage("提交信息已保存。");
-      notify("提交信息已保存", "success");
-    } catch (error) {
-      setEditMessage(error.message);
-      notify(error.message, "error");
-    }
   }
 
   async function patchSelectedSubmission() {
