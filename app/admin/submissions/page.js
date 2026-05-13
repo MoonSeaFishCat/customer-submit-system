@@ -19,7 +19,7 @@ export default async function AdminSubmissionsPage({ searchParams }) {
   const limit = Number(params?.limit || 500);
 
   const templates = await getTemplates({ includeInactive: true });
-  const submissions = await getSubmissions({ templateSlug, limit });
+  const { submissions, total } = await getSubmissions({ templateSlug, pageSize: 20, page: 1 });
 
   return (
     <AdminShell
@@ -36,7 +36,7 @@ export default async function AdminSubmissionsPage({ searchParams }) {
       <div className="mb-6 grid gap-4 md:grid-cols-4">
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle>{submissions.length}</CardTitle>
+            <CardTitle>{total}</CardTitle>
             <CardDescription>当前结果数</CardDescription>
           </CardHeader>
         </Card>
@@ -58,7 +58,7 @@ export default async function AdminSubmissionsPage({ searchParams }) {
 
       <Card className="glass-card">
         <CardContent className="pt-6">
-          <AdminSubmissionList submissions={submissions} templates={templates} />
+          <AdminSubmissionList submissions={submissions} initialTotal={total} templates={templates} />
         </CardContent>
       </Card>
     </AdminShell>

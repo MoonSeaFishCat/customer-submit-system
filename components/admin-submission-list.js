@@ -35,11 +35,11 @@ function normalizeDuplicateValue(value) {
   return String(value).trim().toLowerCase();
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
-export default function AdminSubmissionList({ submissions: initialSubmissions, templates }) {
+export default function AdminSubmissionList({ submissions: initialSubmissions, initialTotal, templates }) {
   const [rows, setRows] = useState(initialSubmissions);
-  const [total, setTotal] = useState(initialSubmissions.length);
+  const [total, setTotal] = useState(initialTotal ?? initialSubmissions.length);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [templateItems, setTemplateItems] = useState(templates);
@@ -61,9 +61,10 @@ export default function AdminSubmissionList({ submissions: initialSubmissions, t
   const [pushingIds, setPushingIds] = useState([]);
   const [confirmAction, setConfirmAction] = useState(null);
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const dragStateRef = useRef(null);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   async function fetchPage(p, overrides = {}) {
     setLoading(true);
@@ -82,7 +83,7 @@ export default function AdminSubmissionList({ submissions: initialSubmissions, t
       if (df) params.set("startDate", df);
       if (dt) params.set("endDate", dt);
       params.set("page", String(p));
-      params.set("pageSize", String(PAGE_SIZE));
+      params.set("pageSize", String(overrides.pageSize !== undefined ? overrides.pageSize : pageSize));
       const res = await fetch("/api/submissions?" + params.toString());
       const data = await res.json();
       setRows(data.submissions || []);
@@ -94,6 +95,8 @@ export default function AdminSubmissionList({ submissions: initialSubmissions, t
   }
 
   useEffect(() => { setTemplateItems(templates); }, [templates]);
+
+  useEffect(() => { fetchPage(1); }, []);
 
   useEffect(() => {
     if (!selected) return;
@@ -785,8 +788,24 @@ ${bodyRows}
               {loading ? "查询中..." : "查询"}
             </Button>
             <Button type="button" variant="outline" onClick={resetFilters} disabled={loading}>重置</Button>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">每页</span>
+              <select
+                className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                value={pageSize}
+                onChange={(e) => {
+                  const ps = Number(e.target.value);
+                  setPageSize(ps);
+                  fetchPage(1, { pageSize: ps });
+                }}
+              >
+                {[20, 50, 100, 200, 500].map((n) => (
+                  <option key={n} value={n}>{n} 条</option>
+                ))}
+              </select>
+            </div>
             <div className="text-sm text-muted-foreground">
-              共 {total} 条，第 {page} / {totalPages} 页，每页 {PAGE_SIZE} 条
+              共 {total} 条，第 {page} / {totalPages} 页
             </div>
           </div>
         </CardContent>
