@@ -17,7 +17,9 @@
       "Bash(node -e \"require\\('fs'\\).readFileSync\\('/d/桌面/public/customer-submit-system/app/admin/submissions/page.js','utf8'\\)\")",
       "Bash(node -e \"require\\('fs'\\).readFileSync\\('/d/桌面/public/customer-submit-system/components/admin-submission-list.js','utf8'\\)\")",
       "Bash(grep -E \"\\\\.\\(js|py|json|ts\\)$\")",
-      "Bash(grep -E \"\\\\.\\(js|py|json|ts|md\\)$\")"
+      "Bash(grep -E \"\\\\.\\(js|py|json|ts|md\\)$\")",
+      "Bash(node -e ' *)",
+      "Bash(powershell -Command \"Test-NetConnection -ComputerName 118.178.95.61 -Port 8765 -InformationLevel Quiet\")"
     ]
   }
 }
