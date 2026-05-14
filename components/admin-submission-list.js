@@ -716,7 +716,26 @@ ${bodyRows}
     notify("字段已合并写入", "success");
   }
 
-  // ── ERP 缓存逻辑 ──────────────────────────────────────────
+  // ── ERP 弹窗逻辑 ──────────────────────────────────────────
+
+  async function markErpNoAnomaly(submission, cancel = false) {
+    try {
+      const res = await fetch("/api/erp/order", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ submissionId: submission.id, override: cancel ? null : "no_anomaly" }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setRows((current) => current.map((s) => s.id === submission.id ? json.submission : s));
+        notify(cancel ? "已取消无异常标记" : "已标记为无异常", "success");
+      } else {
+        notify(json.error || "操作失败", "error");
+      }
+    } catch (err) {
+      notify(err.message, "error");
+    }
+  }
 
   async function openErpDetail(submission) {
     // 已有数据库里的数据直接展示
@@ -948,7 +967,7 @@ ${bodyRows}
                   const editableData = getEditableRowData(submission);
                   const duplicate = hasAnyDuplicateExistingCell(submission);
                   const erpData = submission.erp_order_data;
-                  const erpAnomaly = erpData?._analysis?.anomaly === true;
+                  const erpAnomaly = erpData?._analysis?.anomaly === true && submission.erp_anomaly_override !== "no_anomaly";
                   return (
                     <tr
                       key={submission.id}
@@ -987,6 +1006,12 @@ ${bodyRows}
                           <Button type="button" size="sm" variant="outline" onClick={() => requestPushSubmissions([submission.id])} disabled={!canPushSubmission(submission)}>{getPushButtonText(submission)}</Button>
                           <Button type="button" size="sm" variant="outline" onClick={() => loadDetail(submission)}>详情</Button>
                           <Button type="button" size="sm" variant="outline" onClick={() => openErpDetail(submission)}>快麦详情</Button>
+                          {erpAnomaly && (
+                            <Button type="button" size="sm" variant="outline" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={() => markErpNoAnomaly(submission)}>标记无异常</Button>
+                          )}
+                          {submission.erp_anomaly_override === "no_anomaly" && (
+                            <Button type="button" size="sm" variant="outline" className="border-slate-300 text-slate-500 hover:bg-slate-50" onClick={() => markErpNoAnomaly(submission, true)}>取消标记</Button>
+                          )}
                           <Button type="button" size="sm" variant="destructive" onClick={() => requestDeleteSubmission(submission)}>删除</Button>
                         </div>
                         {duplicate ? <p className="mt-2 text-xs font-semibold text-amber-700">疑似重复</p> : null}

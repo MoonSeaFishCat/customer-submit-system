@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { initDb, getSubmissionById, updateSubmissionErpOrder } from "@/lib/db";
+import { initDb, getSubmissionById, updateSubmissionErpOrder, updateSubmissionErpOverride } from "@/lib/db";
 import { requireAdmin, verifyApiKey } from "@/lib/auth";
 import { searchErpOrders, searchErpOrder, pickNearestOrder, analyzeInstallCount } from "@/lib/erp";
 
@@ -85,6 +85,26 @@ export async function POST(request) {
   } catch (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
+}
+
+// PATCH /api/erp/order  { submissionId, override: "no_anomaly" | null }
+export async function PATCH(request) {
+  await initDb();
+  if (!(await requireAdminOrApiKey(request))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const { submissionId, override } = body;
+  if (!submissionId) {
+    return NextResponse.json({ error: "缺少 submissionId" }, { status: 400 });
+  }
+
+  const updated = await updateSubmissionErpOverride(submissionId, override || null);
+  if (!updated) {
+    return NextResponse.json({ error: "提交记录不存在" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true, submission: updated });
 }
 
 function extractErpQuery(data) {
