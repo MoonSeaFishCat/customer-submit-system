@@ -83,10 +83,16 @@ export async function POST(request, { params }) {
         const orders = await searchErpOrders(erpQuery);
         console.log("[ERP] 查询结果数量:", orders.length);
         if (orders.length > 0) {
-          const order = pickNearestOrder(orders, createdAt);
+          const CLOSED_STATUSES = new Set(["TRADE_CLOSED", "TRADE_CLOSED_BY_TAOBAO", "CLOSED", "closed"]);
+          const activeOrders = orders.filter((o) =>
+            !CLOSED_STATUSES.has(String(o.status || "")) &&
+            !String(o.chStatus || "").includes("关闭") &&
+            !String(o.sysStatus || "").includes("CLOSED")
+          );
+          const order = pickNearestOrder(activeOrders.length > 0 ? activeOrders : orders, createdAt);
           const analysis = analyzeInstallCount(orders, createdAt, submittedQty);
           console.log("[ERP] 选中订单 tid=", order.tid, "analysis=", analysis);
-          await updateSubmissionErpOrder(submissionId, { ...order, _allOrders: orders, _analysis: analysis });
+          await updateSubmissionErpOrder(submissionId, { ...order, _allOrders: activeOrders, _analysis: analysis });
           console.log("[ERP] 写库成功 submissionId=", submissionId);
         } else {
           console.log("[ERP] 未找到订单");

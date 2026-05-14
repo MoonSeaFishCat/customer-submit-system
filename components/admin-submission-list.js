@@ -1000,21 +1000,28 @@ ${bodyRows}
                           {submission.pushed_at ? <span className="text-xs text-muted-foreground">{formatDate(submission.pushed_at)}</span> : null}
                         </div>
                       </td>
-                      <td className={`sticky right-0 whitespace-nowrap border-b px-3 py-2 align-middle shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.55)] ${duplicate ? "bg-amber-50" : "bg-background"}`}>
-                        <div className="flex gap-2">
-                          <Button type="button" size="sm" onClick={() => saveExistingRow(submission)} disabled={!hasDraftChanges(submission)}>保存</Button>
-                          <Button type="button" size="sm" variant="outline" onClick={() => requestPushSubmissions([submission.id])} disabled={!canPushSubmission(submission)}>{getPushButtonText(submission)}</Button>
-                          <Button type="button" size="sm" variant="outline" onClick={() => loadDetail(submission)}>详情</Button>
-                          <Button type="button" size="sm" variant="outline" onClick={() => openErpDetail(submission)}>快麦详情</Button>
-                          {erpAnomaly && (
-                            <Button type="button" size="sm" variant="outline" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={() => markErpNoAnomaly(submission)}>标记无异常</Button>
-                          )}
-                          {submission.erp_anomaly_override === "no_anomaly" && (
-                            <Button type="button" size="sm" variant="outline" className="border-slate-300 text-slate-500 hover:bg-slate-50" onClick={() => markErpNoAnomaly(submission, true)}>取消标记</Button>
-                          )}
-                          <Button type="button" size="sm" variant="destructive" onClick={() => requestDeleteSubmission(submission)}>删除</Button>
+                      <td
+                        className={`sticky right-0 border-b px-2 py-2 align-middle shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.55)] ${erpAnomaly ? "bg-red-50" : duplicate ? "bg-amber-50" : "bg-background"}`}
+                        onDoubleClick={() => loadDetail(submission)}
+                        title="双击全屏查看详情"
+                      >
+                        <div className="flex flex-col gap-1">
+                          <div className="flex gap-1">
+                            <Button type="button" size="sm" onClick={() => saveExistingRow(submission)} disabled={!hasDraftChanges(submission)}>保存</Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => requestPushSubmissions([submission.id])} disabled={!canPushSubmission(submission)}>{getPushButtonText(submission)}</Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => openErpDetail(submission)}>快麦</Button>
+                            <Button type="button" size="sm" variant="destructive" onClick={() => requestDeleteSubmission(submission)}>删除</Button>
+                          </div>
+                          <div className="flex gap-1">
+                            {erpAnomaly && (
+                              <Button type="button" size="sm" variant="outline" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={() => markErpNoAnomaly(submission)}>标记无异常</Button>
+                            )}
+                            {submission.erp_anomaly_override === "no_anomaly" && (
+                              <Button type="button" size="sm" variant="outline" className="border-slate-300 text-slate-500 hover:bg-slate-50" onClick={() => markErpNoAnomaly(submission, true)}>取消标记</Button>
+                            )}
+                          </div>
                         </div>
-                        {duplicate ? <p className="mt-2 text-xs font-semibold text-amber-700">疑似重复</p> : null}
+                        {duplicate ? <p className="mt-1 text-xs font-semibold text-amber-700">疑似重复</p> : null}
                       </td>
                     </tr>
                   );

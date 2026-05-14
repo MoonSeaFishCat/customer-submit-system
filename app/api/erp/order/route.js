@@ -68,8 +68,15 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, order: null, error: "ERP 中未找到对应订单" });
     }
 
+    const CLOSED_STATUSES = new Set(["TRADE_CLOSED", "TRADE_CLOSED_BY_TAOBAO", "CLOSED", "closed"]);
+    const activeOrders = orders.filter((o) =>
+      !CLOSED_STATUSES.has(String(o.status || "")) &&
+      !String(o.chStatus || "").includes("关闭") &&
+      !String(o.sysStatus || "").includes("CLOSED")
+    );
+
     // 选与提交时间最近的订单（用于展示主订单信息）
-    const order = pickNearestOrder(orders, submission.created_at);
+    const order = pickNearestOrder(activeOrders.length > 0 ? activeOrders : orders, submission.created_at);
 
     // 提取安装数量：优先用指定字段，否则自动探测
     const submittedQty = extractInstallQty(submission.data, installQtyField);
@@ -77,8 +84,8 @@ export async function POST(request) {
     // 分析近15天内所有订单的安装服务数量
     const analysis = analyzeInstallCount(orders, submission.created_at, submittedQty);
 
-    // 存库：主订单 + 全量订单列表 + 分析结果
-    const enriched = { ...order, _allOrders: orders, _analysis: analysis };
+    // 存库：主订单 + 有效订单列表 + 分析结果
+    const enriched = { ...order, _allOrders: activeOrders, _analysis: analysis };
     const updated = await updateSubmissionErpOrder(submissionId, enriched);
 
     return NextResponse.json({ ok: true, order: enriched, analysis, submission: updated });
