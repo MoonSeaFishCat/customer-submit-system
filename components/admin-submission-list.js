@@ -738,9 +738,26 @@ ${bodyRows}
   }
 
   async function openErpDetail(submission) {
-    // 已有数据库里的数据直接展示
+    // 已有数据库里的数据直接展示，但用当前 AZSL 字段重新计算 submittedQty 和 anomaly
     if (submission.erp_order_data) {
-      setErpModal({ submission, loading: false, order: submission.erp_order_data, error: null });
+      const qtyKeys = ["AZSL", "qty", "quantity", "count", "num", "数量", "安装数量", "台数", "安装台数"];
+      let currentQty = 0;
+      for (const key of qtyKeys) {
+        const v = submission.data?.[key];
+        if (v !== undefined && v !== "") { currentQty = Number(v) || 0; break; }
+      }
+      const cached = submission.erp_order_data;
+      const erpQty = cached._analysis?.erpQty ?? 0;
+      const fixedOrder = {
+        ...cached,
+        _analysis: cached._analysis ? {
+          ...cached._analysis,
+          submittedQty: currentQty,
+          match: erpQty === currentQty,
+          anomaly: erpQty !== currentQty,
+        } : cached._analysis,
+      };
+      setErpModal({ submission, loading: false, order: fixedOrder, error: null });
       return;
     }
     setErpModal({ submission, loading: true, order: null, error: null });

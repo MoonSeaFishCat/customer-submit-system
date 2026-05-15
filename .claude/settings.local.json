@@ -19,7 +19,9 @@
       "Bash(grep -E \"\\\\.\\(js|py|json|ts\\)$\")",
       "Bash(grep -E \"\\\\.\\(js|py|json|ts|md\\)$\")",
       "Bash(node -e ' *)",
-      "Bash(powershell -Command \"Test-NetConnection -ComputerName 118.178.95.61 -Port 8765 -InformationLevel Quiet\")"
+      "Bash(powershell -Command \"Test-NetConnection -ComputerName 118.178.95.61 -Port 8765 -InformationLevel Quiet\")",
+      "Read(//app/api/submit/[slug]/**)",
+      "Read(//app/api/erp/order/**)"
     ]
   }
 }

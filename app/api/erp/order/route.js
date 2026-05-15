@@ -65,6 +65,7 @@ export async function POST(request) {
   try {
     const orders = await searchErpOrders(erpQuery);
     if (orders.length === 0) {
+      console.warn("[ERP] 未找到订单, submissionId=", submissionId, "erpQuery=", erpQuery, "submission.data=", JSON.stringify(submission.data));
       return NextResponse.json({ ok: false, order: null, error: "ERP 中未找到对应订单" });
     }
 
