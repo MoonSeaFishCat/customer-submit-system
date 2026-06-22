@@ -28,10 +28,37 @@ export async function GET(request) {
   const endDate = sp.get("endDate") || undefined;
   const status = sp.get("status") || undefined;
   const source = sp.get("source") || undefined;
+  const pushStatus = sp.get("pushStatus") || undefined;
+  const erpStatus = sp.get("erpStatus") || undefined;
+  const ip = sp.get("ip") || undefined;
+  const fieldFiltersJson = sp.get("fieldFilters") || undefined;
   const pageSize = sp.get("pageSize") ? Number(sp.get("pageSize")) : undefined;
   const page = sp.get("page") ? Number(sp.get("page")) : 1;
 
-  const result = await getSubmissions({ templateSlug, limit, page, pageSize, search, startDate, endDate, status, source });
+  let fieldFilters = [];
+  if (fieldFiltersJson) {
+    try {
+      fieldFilters = JSON.parse(fieldFiltersJson);
+    } catch (e) {
+      return NextResponse.json({ error: "Invalid fieldFilters format" }, { status: 400 });
+    }
+  }
+
+  const result = await getSubmissions({
+    templateSlug,
+    limit,
+    page,
+    pageSize,
+    search,
+    startDate,
+    endDate,
+    status,
+    source,
+    pushStatus,
+    erpStatus,
+    ip,
+    fieldFilters
+  });
 
   if (pageSize) {
     return NextResponse.json(result);
