@@ -140,7 +140,7 @@ export default function SubmissionTable({
                       const fieldDef = getFieldDefinition(key);
                       return (
                         <td key={key} className={`max-w-[240px] border-b border-r px-3 py-2 align-middle ${dupSub ? "border-amber-200 bg-amber-50" : ""}`}>
-                          <EditableCell rowId={row.id} data={row.data} key={key} duplicate={Boolean(dupSub)} onUpdate={onUpdateNewCell} field={fieldDef} />
+                          <EditableCell rowId={row.id} data={row.data} fieldKey={key} duplicate={Boolean(dupSub)} onUpdate={onUpdateNewCell} field={fieldDef} />
                           {fieldDef.help ? <p className="mt-1 text-xs text-muted-foreground">{fieldDef.help}</p> : null}
                           {dupSub ? <p className="mt-1 text-xs font-medium text-amber-700">与记录 {dupSub.id} 重复</p> : null}
                         </td>
@@ -183,7 +183,7 @@ export default function SubmissionTable({
                       const fieldDef = getFieldDefinition(key);
                       return (
                         <td key={key} className={`max-w-[240px] border-b border-r px-3 py-2 align-middle ${dupCell ? "border-amber-200 bg-amber-50" : ""}`}>
-                          <EditableCell rowId={submission} data={editableData} key={key} duplicate={dupCell} onUpdate={onUpdateExistingCell} field={fieldDef} />
+                          <EditableCell rowId={submission} data={editableData} fieldKey={key} duplicate={dupCell} onUpdate={onUpdateExistingCell} field={fieldDef} />
                           {fieldDef.help ? <p className="mt-1 text-xs text-muted-foreground">{fieldDef.help}</p> : null}
                           {dupCell ? <p className="mt-1 text-xs font-medium text-amber-700">重复值</p> : null}
                         </td>

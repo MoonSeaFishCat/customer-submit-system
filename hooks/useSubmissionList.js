@@ -75,7 +75,17 @@ export function useSubmissionList({ initialSubmissions, initialTotal, templates 
   }
 
   useEffect(() => { setTemplateItems(templates); }, [templates]);
-  useEffect(() => { fetchPage(1); }, []);
+
+  // 确保初始数据正确加载，不要立即 fetchPage
+  useEffect(() => {
+    if (initialSubmissions && initialSubmissions.length > 0) {
+      setRows(initialSubmissions);
+      setTotal(initialTotal ?? initialSubmissions.length);
+    }
+  }, [initialSubmissions, initialTotal]);
+
+  // 注释掉自动 fetchPage，因为服务端已经传了初始数据
+  // useEffect(() => { fetchPage(1); }, []);
 
   const fieldLabelMap = useMemo(() => buildFieldLabelMap(templateItems), [templateItems]);
 

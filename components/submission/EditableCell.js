@@ -5,34 +5,34 @@ import { Input, Textarea } from "@/components/ui";
 /**
  * 管理端可编辑单元格组件
  */
-export default function EditableCell({ rowId, data, key, duplicate = false, onUpdate, field }) {
+export default function EditableCell({ rowId, data, fieldKey, duplicate = false, onUpdate, field }) {
   const normalizedType = field.type === "dropdown" || field.type === "radio" ? "select" : field.type;
   const options = Array.isArray(field.options)
     ? field.options
     : String(field.optionsText || "").split("\n").map((o) => o.trim()).filter(Boolean);
-  const value = data?.[key] === undefined || data?.[key] === null ? "" : data[key];
+  const value = data?.[fieldKey] === undefined || data?.[fieldKey] === null ? "" : data[fieldKey];
   const dupClass = duplicate ? "border-amber-300 bg-amber-100/80 font-semibold text-amber-900 focus-visible:ring-amber-400" : "";
 
   if (normalizedType === "multiselect") {
     const selectedVals = String(value) ? String(value).split("+").map((v) => v.trim()).filter(Boolean) : [];
     const toggle = (opt) => {
       const next = selectedVals.includes(opt) ? selectedVals.filter((v) => v !== opt) : [...selectedVals, opt];
-      onUpdate(rowId, key, next.join("+"));
+      onUpdate(rowId, fieldKey, next.join("+"));
     };
     const removeCustom = (opt) => {
       const next = selectedVals.filter((v) => v !== opt);
-      onUpdate(rowId, key, next.join("+"));
+      onUpdate(rowId, fieldKey, next.join("+"));
     };
     const displayText = selectedVals.length > 0 ? selectedVals.join(" + ") : "请选择";
     const customVals = selectedVals.filter((v) => !options.includes(v));
-    const inputId = `ms-input-${rowId}-${key}`;
+    const inputId = `ms-input-${rowId}-${fieldKey}`;
     const addCustomValue = () => {
       const input = document.getElementById(inputId);
       if (!input) return;
       const v = input.value.trim();
       if (!v) return;
       if (!selectedVals.includes(v)) {
-        onUpdate(rowId, key, [...selectedVals, v].join("+"));
+        onUpdate(rowId, fieldKey, [...selectedVals, v].join("+"));
       }
       input.value = "";
     };
@@ -93,7 +93,7 @@ export default function EditableCell({ rowId, data, key, duplicate = false, onUp
       <select
         className={`h-8 min-w-40 rounded-md border bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${duplicate ? dupClass : "border-input"}`}
         value={String(value)}
-        onChange={(e) => onUpdate(rowId, key, e.target.value)}
+        onChange={(e) => onUpdate(rowId, fieldKey, e.target.value)}
       >
         <option value="">请选择</option>
         {options.map((o) => (
@@ -108,7 +108,7 @@ export default function EditableCell({ rowId, data, key, duplicate = false, onUp
         <input
           type="checkbox"
           checked={Boolean(value === true || value === "true" || value === "1" || value === "是")}
-          onChange={(e) => onUpdate(rowId, key, e.target.checked)}
+          onChange={(e) => onUpdate(rowId, fieldKey, e.target.checked)}
         />
         {field.placeholder || field.help || "是"}
       </label>
@@ -119,7 +119,7 @@ export default function EditableCell({ rowId, data, key, duplicate = false, onUp
       <Textarea
         className={`min-h-8 min-w-52 py-1 text-sm ${duplicate ? dupClass : "border-transparent bg-transparent shadow-none hover:border-input hover:bg-background focus-visible:bg-background"}`}
         value={String(value)}
-        onChange={(e) => onUpdate(rowId, key, e.target.value)}
+        onChange={(e) => onUpdate(rowId, fieldKey, e.target.value)}
         placeholder={field.placeholder || field.label}
       />
     );
@@ -129,7 +129,7 @@ export default function EditableCell({ rowId, data, key, duplicate = false, onUp
       className={`h-8 min-w-40 px-2 shadow-none hover:border-input hover:bg-background focus-visible:bg-background ${duplicate ? dupClass : "border-transparent bg-transparent"}`}
       type={normalizedType || "text"}
       value={String(value)}
-      onChange={(e) => onUpdate(rowId, key, e.target.value)}
+      onChange={(e) => onUpdate(rowId, fieldKey, e.target.value)}
       placeholder={field.placeholder || field.label}
     />
   );

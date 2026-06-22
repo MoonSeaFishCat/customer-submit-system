@@ -21,6 +21,14 @@ export default async function AdminSubmissionsPage({ searchParams }) {
   const templates = await getTemplates({ includeInactive: true });
   const { submissions, total } = await getSubmissions({ templateSlug, pageSize: 20, page: 1 });
 
+  console.log("[SSR] Admin Submissions Page:", {
+    templateSlug,
+    templatesCount: templates.length,
+    submissionsCount: submissions.length,
+    total,
+    firstSubmission: submissions[0]?.id,
+  });
+
   return (
     <AdminShell
       title="提交结果查询"
